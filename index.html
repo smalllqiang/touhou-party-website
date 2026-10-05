@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>小游戏工具箱</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ 左侧导航栏 ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-logo">🎮</span>
+      <div class="brand-text">
+        <div class="brand-title">小游戏工具箱</div>
+        <div class="brand-sub">PARTY GAME TOOLS</div>
+      </div>
+    </div>
+
+    <div class="nav-label">小游戏</div>
+    <nav class="nav" id="nav"><!-- 由 js/app.js 渲染 --></nav>
+
+    <div class="sidebar-footer">
+      <span class="dot"></span> 更多小游戏陆续加入
+    </div>
+  </aside>
+  <div class="backdrop" id="backdrop"></div>
+
+  <!-- ============ 右侧内容区 ============ -->
+  <main class="content">
+    <header class="content-header">
+      <button class="icon-btn menu-btn" id="menuBtn" aria-label="打开菜单">☰</button>
+      <div class="content-title">
+        <h1 id="pageTitle">你画我猜</h1>
+        <p id="pageSubtitle" class="page-subtitle"></p>
+      </div>
+    </header>
+    <div class="content-body" id="view"></div>
+  </main>
+
+</div>
+
+<!-- 图片放大查看 -->
+<div class="lightbox" id="lightbox" hidden>
+  <img id="lightboxImg" alt="作品预览">
+  <span class="lightbox-hint">点击任意处关闭 · Esc</span>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/drawing-board.js"></script>
+<script src="js/games/draw-guess.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
