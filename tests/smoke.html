@@ -28,6 +28,7 @@
 <script src="../js/utils.js"></script>
 <script src="../js/drawing-board.js"></script>
 <script src="../js/games/draw-guess.js"></script>
+<script src="../js/games/undercover.js"></script>
 <script src="../js/app.js"></script>
 <script>
 (function () {
@@ -65,7 +66,7 @@
   async function run() {
     try {
       /* ---------- 导航 ---------- */
-      check('侧边栏渲染出 1 个小游戏', $$('#nav .nav-item').length === 1);
+      check('侧边栏渲染出 2 个小游戏', $$('#nav .nav-item').length === 2);
       check('导航项高亮', !!$('#nav .nav-item.is-active'));
       check('标题已设置', ($('#pageTitle').textContent || '').indexOf('你画我猜') >= 0,
         $('#pageTitle').textContent);
@@ -172,6 +173,132 @@
         ($('#view .play-meta') || {}).textContent);
       check('B 阶段倒计时用的是 b 配置', $('#view .timer-value').textContent.trim() === '00:02',
         $('#view .timer-value').textContent);
+
+      /* ============================================================
+         谁是卧底
+         ============================================================ */
+      $$('#nav .nav-item')[1].click();
+      await wait(80);
+
+      check('切换到「谁是卧底」', ($('#pageTitle').textContent || '').indexOf('谁是卧底') >= 0,
+        $('#pageTitle').textContent);
+      check('抽题界面已渲染', !!$('#view #ucDrawBtn'));
+      check('默认 4 人', $('#view #ucCount').value === '4', $('#view #ucCount').value);
+      check('名字输入框数量 = 人数', $$('#view .uc-name-field input').length === 4);
+      check('初始「开始发牌」禁用', $('#ucStartBtn').disabled);
+      check('初始「查看本题」禁用', $('#ucPeekBtn').disabled);
+
+      /* ---------- 抽题 ---------- */
+      $('#ucDrawBtn').click();
+      check('抽题动画中', $('#ucTopicSlot').className.indexOf('is-rolling') >= 0,
+        $('#ucTopicSlot').className);
+      await wait(1200);
+
+      check('抽到题目后按钮可用', !$('#ucRedrawBtn').disabled && !$('#ucStartBtn').disabled);
+      check('题目默认藏起来（防剧透）', $('#ucTopicSlot').className.indexOf('is-hidden') >= 0,
+        $('#ucTopicSlot').className);
+
+      /* ---------- 主持人查看本题 ---------- */
+      $('#ucPeekBtn').click();
+      await wait(30);
+      var shownText = $('#ucTopicSlot').textContent;
+      check('主持人可以查看本题', $('#ucTopicSlot').className.indexOf('is-shown') >= 0 &&
+        shownText.indexOf('卧底') >= 0, shownText.trim());
+      var matched = window.GAME_CONFIG.undercover.topics.filter(function (t) {
+        return t && typeof t.normal === 'string' &&
+          shownText.indexOf(t.normal) >= 0 && shownText.indexOf(t.spy) >= 0;
+      });
+      check('查看的两个词来自 config 的同一组题', matched.length >= 1, shownText.trim());
+      $('#ucPeekBtn').click();
+      await wait(30);
+
+      /* ---------- 改人数 ---------- */
+      $('#ucPlus').click();
+      await wait(30);
+      check('加号改人数 -> 5 人', $('#ucCount').value === '5', $('#ucCount').value);
+      check('名字输入框跟着变成 5 个', $$('#view .uc-name-field input').length === 5);
+
+      var nameInputs = $$('#view .uc-name-field input');
+      nameInputs[0].value = '小明';
+      nameInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+
+      /* ---------- 发牌 ---------- */
+      $('#ucStartBtn').click();
+      await wait(80);
+      check('发牌后出现 5 张卡片', $$('#view .uc-card').length === 5,
+        'cards=' + $$('#view .uc-card').length);
+      check('卡片默认全部盖着', $$('#view .uc-card.is-open').length === 0);
+      check('每张卡片都有按住按钮', $$('#view .uc-hold-btn').length === 5);
+      check('第一张卡片用了改过的名字',
+        $('#view .uc-card .uc-card-name').textContent === '小明',
+        $('#view .uc-card .uc-card-name').textContent);
+      check('卡片有配图位且指向本地图片文件夹',
+        $$('#view .uc-card-media img').length === 5 &&
+        $('#view .uc-card-media img').getAttribute('src').indexOf('images/undercover/') === 0,
+        $('#view .uc-card-media img').getAttribute('src'));
+      check('卡片上不显示卧底身份', $$('#view .uc-card.is-spy').length === 0 &&
+        ($('#view .uc-card .uc-card-role').textContent || '') === '');
+
+      /* ---------- 按住查看 / 松手消失 ---------- */
+      var holdBtn = $$('#view .uc-hold-btn')[0];
+      holdBtn.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, cancelable: true, pointerId: 11, pointerType: 'mouse',
+        isPrimary: true, buttons: 1
+      }));
+      await wait(30);
+      check('按住按钮 -> 这张卡片翻开', $$('#view .uc-card')[0].classList.contains('is-open'));
+      check('只翻开被按住的那一张', $$('#view .uc-card.is-open').length === 1,
+        'open=' + $$('#view .uc-card.is-open').length);
+
+      window.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true, cancelable: true, pointerId: 11, pointerType: 'mouse',
+        isPrimary: true, buttons: 0
+      }));
+      await wait(30);
+      check('松开 -> 卡片自动盖回去', $$('#view .uc-card.is-open').length === 0);
+      check('看过之后标记「已查看」', !$('#view .uc-card .uc-card-seen').hidden);
+
+      /* ---------- 恰好 1 个人词不一样 ---------- */
+      var words = $$('#view .uc-card').map(function (card) {
+        return card.querySelector('.uc-card-word').textContent.trim();
+      });
+      var uniq = words.filter(function (w, i) { return words.indexOf(w) === i; });
+      check('所有卡片一共只有两种词', uniq.length === 2, uniq.join(' / '));
+      var counts = uniq.map(function (w) {
+        return words.filter(function (x) { return x === w; }).length;
+      }).sort();
+      check('恰好 1 个卧底 + 4 个普通玩家', counts[0] === 1 && counts[1] === 4, '分布 ' + counts.join(':'));
+
+      /* ---------- 一键翻开 / 扣上（永久） ---------- */
+      $('#ucFlipBtn').click();
+      await wait(30);
+      check('一键翻开 -> 全部卡片都翻开', $$('#view .uc-card.is-open').length === 5,
+        'open=' + $$('#view .uc-card.is-open').length);
+      check('翻开后只有 1 张是卧底', $$('#view .uc-card.is-spy').length === 1);
+      check('每张卡片都标出身份', $$('#view .uc-card-role').filter(function (el) {
+        return el.textContent.trim().length > 0;
+      }).length === 5);
+      check('翻开后公布卧底是谁', !$('#ucBanner').hidden &&
+        $('#ucBanner').textContent.indexOf('卧底') >= 0, $('#ucBanner').textContent.trim());
+      check('按钮变成「一键扣上」', $('#ucFlipBtn').textContent.indexOf('扣上') >= 0,
+        $('#ucFlipBtn').textContent);
+
+      $('#ucFlipBtn').click();
+      await wait(30);
+      check('再点一次 -> 全部扣上', $$('#view .uc-card.is-open').length === 0);
+      check('扣上后不再显示身份', $$('#view .uc-card.is-spy').length === 0 && $('#ucBanner').hidden);
+
+      /* ---------- 换一题重发 / 返回设置 ---------- */
+      $('#ucRedealBtn').click();
+      await wait(80);
+      check('换一题重发后仍是 5 张卡片', $$('#view .uc-card').length === 5);
+      check('重发后卡片全部盖着', $$('#view .uc-card.is-open').length === 0);
+
+      $('#ucSetupBtn').click();
+      await wait(80);
+      check('返回设置界面', !!$('#view #ucDrawBtn'));
+      check('返回后人数保持不变', $('#view #ucCount').value === '5', $('#view #ucCount').value);
+      check('返回后题目还在，可以直接再发牌', !$('#ucStartBtn').disabled);
     } catch (err) {
       check('运行期异常', false, err && (err.message + ' @ ' + (err.stack || '').split('\n')[1]));
     }

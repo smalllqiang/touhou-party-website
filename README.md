@@ -2,7 +2,7 @@
 
 线下聚会玩小游戏时的辅助工具站。界面是两栏结构：**左侧导航栏**列出各个小游戏，**右侧主内容区**随所选游戏切换。
 
-目前实现了第一个小游戏：**你画我猜**。
+目前实现了两个小游戏：**你画我猜** 和 **谁是卧底**。
 
 ![抽题界面](docs/screenshots/1-setup.png)
 
@@ -35,9 +35,29 @@ python3 -m http.server 8080
 
 游戏过程中还可以：**暂停 / 继续**、**结束本局**（提前收工直接看作品）、点击参考图放大查看。
 
+## 谁是卧底 怎么玩
+
+n 个人里只有 1 个人（**卧底**）拿到的词和别人不一样，其他人拿到的是同一个词。这个页面只负责**抽词组和发牌**，找出卧底靠大家自己聊天投票。
+
+![抽题界面](docs/screenshots/7-undercover-setup.png)
+
+1. **设置人数**：默认 4 人，可以随时加减（3 ~ 12 人），还能给每个人改名字。
+2. **抽题**：点「抽题」随机抽一组词。抽到的词默认**藏起来不显示**（防止剧透），主持人可以点「查看本题」确认是哪两个词。
+3. **发牌**：点「开始发牌」，出现 n 张盖着的卡片。卡片序号 = 玩家顺序，其中**恰好 1 张**卡片的词和别人不一样。
+4. **依次查看**：每个人拿起设备，**按住**自己卡片上的「按住查看我的词」，就能看到自己的词和配图；**一松手卡片立刻盖回去**，不用担心忘记扣上。看过的卡片会打一个「✓ 已查看」，方便确认轮到谁了。
+5. **公布答案**：玩完之后点卡片外的「👀 一键翻开全部卡片」，所有卡片**永久**翻开，顶部直接告诉你卧底是谁；再点一次「🙈 一键扣上全部卡片」就全部盖回去（也是永久的，不是按住才有效）。
+
+其他按钮：「换一题重发」重新抽一组词并立刻重新发牌；「返回设置」回到人数 / 抽题界面（人数和已抽的题目都会保留）。
+
+![翻开全部卡片公布答案](docs/screenshots/8-undercover-reveal.png)
+
+> 上图里卡片上的虚线框是**配图占位**：没放图片时就会这样，占位框里写着它期望的图片路径，而**词本身照常显示，游戏完全能玩**。怎么放图见下面「给谁是卧底配图」。
+
 ## 修改配置
 
-所有可调项都在 [`js/config.js`](js/config.js) 里的 `drawGuess` 段，改完保存、刷新页面即生效：
+所有可调项都在 [`js/config.js`](js/config.js) 里，改完保存、刷新页面即生效（不需要重新构建）。
+
+### 你画我猜（`drawGuess` 段）
 
 | 配置项 | 说明 |
 | --- | --- |
@@ -62,7 +82,50 @@ drawGuess: {
 }
 ```
 
-## 新增一个（第二个）小游戏
+### 谁是卧底（`undercover` 段）
+
+| 配置项 | 说明 |
+| --- | --- |
+| `players` | 默认玩家人数（界面上也能改） |
+| `minPlayers` / `maxPlayers` | 界面上能调的人数范围 |
+| `names` | 默认玩家名，留空 `[]` 就自动叫「玩家1」「玩家2」… |
+| `imageDir` | 配图文件夹，默认 `images/undercover/` |
+| `imageExt` | 没单独指定图片时的默认后缀，默认 `.png` |
+| `topics` | 题目列表，一组题 = 普通玩家的词 + 卧底的词 |
+
+示例：
+
+```js
+undercover: {
+  players: 6,
+  names: ['小明', '小红'],           // 不够的自动补「玩家3」「玩家4」…
+  imageExt: '.jpg',                 // 图片统一用 jpg
+  topics: [
+    { normal: '可乐', spy: '雪碧' },  // 自动找 可乐.jpg / 雪碧.jpg
+    { normal: '猫', spy: '老虎',      // 也可以单独指定文件名
+      normalImage: 'cat.png', spyImage: 'tiger.png' },
+    ['火锅', '麻辣烫', 'hotpot.png', 'malatang.png']  // 最紧凑的写法
+  ]
+}
+```
+
+## 给谁是卧底配图
+
+配图是**可选**的，不放也能玩。要放的话，把图片丢进 `images/undercover/`，**文件名和词一样**就行：
+
+```
+images/undercover/可乐.png
+images/undercover/雪碧.png
+```
+
+- 想统一换成 jpg：把 `imageExt` 改成 `'.jpg'`。
+- 只有个别词文件名不一样：在那一组题里写 `normalImage` / `spyImage`。
+- 想放别的文件夹：改 `imageDir`，或直接写完整路径。
+- 图片缺失时卡片上会显示虚线占位框并写出期望路径，**不影响看词和游玩**。
+
+详细说明见 [`images/undercover/README.md`](images/undercover/README.md)。
+
+## 新增小游戏
 
 1. 在 `js/config.js` 里加一段自己的配置（如 `werewolf: { ... }`）。
 2. 新建 `js/games/xxx.js`，导出一个 `window.XxxGame = { mount: function (host) { ... return { destroy: function () {} }; } }`。
@@ -74,18 +137,20 @@ drawGuess: {
 ```
 index.html                 页面骨架：左侧导航栏 + 右侧内容区
 css/style.css              全部样式（含响应式：窄屏导航变抽屉）
-js/config.js               ★ 配置文件：题目、倒计时、轮数、颜色、粗细
+js/config.js               ★ 配置文件：两个游戏的题目、人数、倒计时、颜色…
 js/utils.js                通用工具：计时格式化、提示音、下载、图片放大
 js/drawing-board.js        画板组件：画笔 / 颜色 / 粗细 / 橡皮擦 / 撤销 / 清空
 js/games/draw-guess.js     你画我猜：抽题 → A → B → 结果 的完整流程
+js/games/undercover.js     谁是卧底：抽词 → 发牌 → 按住查看 / 一键翻开
+images/undercover/         ★ 谁是卧底的配图（按词名放图即可）
 js/app.js                  应用入口：导航渲染与游戏切换
-tests/smoke.html           浏览器冒烟测试（自动跑完整局流程并断言）
+tests/smoke.html           浏览器冒烟测试（自动跑完两个游戏并断言）
 docs/screenshots/          界面截图
 ```
 
 ## 冒烟测试
 
-`tests/smoke.html` 会自动把整局流程点一遍（抽题 → 6 个阶段 → 结果页 → 时间到自动切换），并把结果打印在页面上的 `<pre id="results">`，共 35 项断言。
+`tests/smoke.html` 会自动把两个游戏都点一遍（你画我猜整局流程 + 谁是卧底的抽词 / 发牌 / 按住查看 / 一键翻开扣上），并把结果打印在页面上的 `<pre id="results">`，共 72 项断言。
 
 ```bash
 chromium --headless=new --no-sandbox --disable-gpu --user-data-dir=/tmp/cp \

@@ -14,6 +14,15 @@
       title: '你画我猜',
       subtitle: '抽题目、限时作画、看画猜词，结束后可以保存每个人的作品',
       mount: function (host) { return window.DrawGuessGame.mount(host); }
+    },
+    {
+      id: 'undercover',
+      name: '谁是卧底',
+      icon: '🕵️',
+      desc: '抽词 · 发牌 · 按住看词',
+      title: '谁是卧底',
+      subtitle: '抽一组词发给 n 个人，其中 1 个人的词不一样；按住卡片才能看自己的词',
+      mount: function (host) { return window.UndercoverGame.mount(host); }
     }
     // 以后新增小游戏：
     // {
