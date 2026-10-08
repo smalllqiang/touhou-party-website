@@ -139,31 +139,15 @@
       topic: null,          // { normal:{text,image}, spy:{text,image} }
       pool: [],             // 抽题池（避免连着抽到同一组）
       topicVisible: false,  // 主持人是否查看本题
-      rolling: false,       // 抽题动画进行中
       assignments: [],      // [{ name, isSpy, word }]
       spyIndex: -1,
       seen: [],             // 每张卡片是否被查看过
       allRevealed: false,   // 一键翻开（永久）
       peekIndex: -1,        // 当前按住查看的卡片下标
-      destroyed: false,
-      pending: []
+      destroyed: false
     };
 
     var cardEls = [];
-
-    /* ================= 定时器管理 ================= */
-    function every(fn, ms) {
-      var id = setInterval(function () { if (!state.destroyed) fn(); }, ms);
-      state.pending.push({ t: 'i', id: id });
-      return id;
-    }
-
-    function clearPending() {
-      state.pending.forEach(function (p) {
-        if (p.t === 'i') clearInterval(p.id); else clearTimeout(p.id);
-      });
-      state.pending = [];
-    }
 
     /* ================= 玩家名字 ================= */
     function defaultName(i) {
@@ -224,9 +208,7 @@
      *  界面一：设置 + 抽题
      * ============================================================ */
     function renderSetup() {
-      clearPending();
       state.screen = 'setup';
-      state.rolling = false;
       cardEls = [];
 
       root.innerHTML =
@@ -241,6 +223,19 @@
               '<button class="btn blue" id="ucStartBtn" disabled>开始发牌</button>' +
             '</div>' +
           '</div>' +
+
+          /* 题目列表：平时折叠着，需要时展开手动指定一组 */
+          '<details class="uc-picker" id="ucPicker"' + (C.topics.length ? '' : ' hidden') + '>' +
+            '<summary>' +
+              '<span class="uc-picker-title">📋 题目列表</span>' +
+              '<span class="uc-picker-sub">' + C.topics.length + ' 组 · 展开可以直接指定某一组</span>' +
+              '<span class="uc-picker-caret">▾</span>' +
+            '</summary>' +
+            '<div class="uc-picker-body">' +
+              '<p class="uc-picker-tip">左边是<b>普通玩家</b>看到的词，右边是<b>卧底</b>看到的词。点一组就直接用它出题。</p>' +
+              '<div class="uc-pick-list" id="ucPickList"></div>' +
+            '</div>' +
+          '</details>' +
 
           '<div class="setup-grid">' +
             '<div class="card">' +
@@ -291,6 +286,7 @@
       input.addEventListener('change', function () { applyCount(input.value); });
       input.addEventListener('blur', function () { applyCount(input.value); });
 
+      buildPicker();
       paintSetup();
     }
 
@@ -322,7 +318,8 @@
       startBtn.disabled = !hasTopic;
       startBtn.textContent = '开始发牌（' + state.count + ' 张卡片）';
 
-      if (!state.rolling) paintTopicSlot();
+      paintTopicSlot();
+      paintPicker();
       paintCount();
     }
 
@@ -400,34 +397,61 @@
       });
     }
 
-    /* 抽题动画 */
-    function roll() {
-      if (!C.topics.length || state.rolling) return;
+    /* ---------- 题目列表：手动指定某一组 ---------- */
+    function buildPicker() {
+      var host = root.querySelector('#ucPickList');
+      if (!host) return;
 
-      var finalTopic = drawTopic();
-      var slot = root.querySelector('#ucTopicSlot');
-      var ticks = 0;
+      host.innerHTML = C.topics.map(function (t, i) {
+        return '<button type="button" class="uc-pick-item" data-pick="' + i + '">' +
+            '<span class="uc-pick-no">' + (i + 1) + '</span>' +
+            '<span class="uc-pick-word">' + esc(t.normal.text) + '</span>' +
+            '<span class="uc-pick-sep">/</span>' +
+            '<span class="uc-pick-word spy">' + esc(t.spy.text) + '</span>' +
+          '</button>';
+      }).join('');
 
-      state.rolling = true;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-pick]'), function (btn) {
+        btn.addEventListener('click', function () {
+          pickTopic(Number(btn.getAttribute('data-pick')));
+        });
+      });
+    }
+
+    /* 只更新高亮，不重建列表（否则调人数时会把列表的滚动位置顶回去） */
+    function paintPicker() {
+      var host = root.querySelector('#ucPickList');
+      if (!host) return;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-pick]'), function (btn) {
+        var t = C.topics[Number(btn.getAttribute('data-pick'))];
+        btn.classList.toggle('is-active', !!t && t === state.topic);
+      });
+    }
+
+    function pickTopic(index) {
+      var t = C.topics[index];
+      if (!t) return;
+
+      state.topic = t;
       state.topicVisible = false;
-      slot.className = 'uc-topic is-rolling';
-      slot.innerHTML = '<span class="uc-roll-word">' +
-        esc(C.topics[Math.floor(Math.random() * C.topics.length)].normal.text) + '</span>';
+      // 从抽题池里拿掉，免得接着点「抽题」又抽到刚手动选的这一组
+      state.pool = state.pool.filter(function (x) { return x !== t; });
+
       paintSetup();
+      var picker = root.querySelector('#ucPicker');
+      if (picker) picker.open = false;   // 选完自动收起，免得被围观的人看光
+      U.beep(988, 90, 0.12);
+    }
 
-      var spinId = every(function () {
-        ticks++;
-        var t = C.topics[Math.floor(Math.random() * C.topics.length)];
-        slot.innerHTML = '<span class="uc-roll-word">' + esc(t.normal.text) + '</span>';
-
-        if (ticks >= 12) {
-          clearInterval(spinId);
-          state.rolling = false;
-          state.topic = finalTopic;
-          paintSetup();
-          U.beep(1046, 90, 0.12);
-        }
-      }, 55);
+    /* 抽题：点一下直接出结果。
+     * 这里以前有个「滚动显示」的动画，但滚动时会一闪而过地掠过题目池里的
+     * 其他词，等于把可能的题目透露出去了，所以去掉了。 */
+    function roll() {
+      if (!C.topics.length) return;
+      drawTopic();
+      state.topicVisible = false;
+      paintSetup();
+      U.beep(1046, 90, 0.12);
     }
 
     function startReveal() {
@@ -471,7 +495,6 @@
     }
 
     function renderReveal() {
-      clearPending();
       state.screen = 'reveal';
       state.peekIndex = -1;
 
@@ -564,6 +587,11 @@
         e.preventDefault();          // 防止长按选中文字 / 弹出菜单
         openPeek(i);
 
+        // 把这一根手指「锁」在按钮上。
+        // 卡片一开始翻转，按钮就被转到指针命中范围之外，浏览器会跟着补发
+        // pointerout / pointerleave；不锁住的话，卡片会刚翻开就被自己关掉。
+        try { btn.setPointerCapture(e.pointerId); } catch (err) { /* 合成事件等场景忽略 */ }
+
         var pointerId = e.pointerId;
         var end = function (ev) {
           window.removeEventListener('pointerup', end, true);
@@ -575,10 +603,14 @@
         window.addEventListener('pointercancel', end, true);
       });
 
-      // 鼠标按住后移出卡片 -> 直接盖回去
-      btn.addEventListener('pointerleave', function () { closePeek(i); });
+      // 兜底：指针捕获意外丢失时也盖回去
+      btn.addEventListener('lostpointercapture', function () { closePeek(i); });
       btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
       btn.addEventListener('blur', function () { closePeek(i); });
+
+      // 注意：这里故意「不」监听 pointerleave / pointerout。
+      // 翻转动画本身就会把按钮转到指针底下之外并触发一次假的 leave，
+      // 监听它会让卡片刚翻开就立刻合上。
 
       // 键盘：空格 / 回车 按住
       btn.addEventListener('keydown', function (e) {
@@ -654,7 +686,6 @@
     /* ================= 卸载 ================= */
     function destroy() {
       state.destroyed = true;
-      clearPending();
       window.removeEventListener('blur', onLeave);
       document.removeEventListener('visibilitychange', onLeave);
       cardEls = [];

@@ -188,11 +188,23 @@
       check('初始「开始发牌」禁用', $('#ucStartBtn').disabled);
       check('初始「查看本题」禁用', $('#ucPeekBtn').disabled);
 
-      /* ---------- 抽题 ---------- */
+      /* ---------- 抽题 ----------
+         点一下直接出结果，不做「滚动显示」动画：滚动时会掠过题目池里
+         其他词，等于把可能的题目泄露出去了。 */
       $('#ucDrawBtn').click();
-      check('抽题动画中', $('#ucTopicSlot').className.indexOf('is-rolling') >= 0,
+      check('抽题不再滚动，点下去立刻是最终状态',
+        $('#ucTopicSlot').className.indexOf('is-rolling') < 0 &&
+        $('#ucTopicSlot').className.indexOf('is-hidden') >= 0,
         $('#ucTopicSlot').className);
-      await wait(1200);
+
+      var allWords = [];
+      window.GAME_CONFIG.undercover.topics.forEach(function (t) {
+        allWords.push(t.normal, t.spy);
+      });
+      check('抽题过程中不会闪过任何题目词（不泄题）',
+        allWords.every(function (w) { return $('#ucTopicSlot').textContent.indexOf(w) < 0; }),
+        $('#ucTopicSlot').textContent.trim());
+      await wait(50);
 
       check('抽到题目后按钮可用', !$('#ucRedrawBtn').disabled && !$('#ucStartBtn').disabled);
       check('题目默认藏起来（防剧透）', $('#ucTopicSlot').className.indexOf('is-hidden') >= 0,
@@ -211,6 +223,54 @@
       check('查看的两个词来自 config 的同一组题', matched.length >= 1, shownText.trim());
       $('#ucPeekBtn').click();
       await wait(30);
+
+      /* ---------- 换一题：同一套逻辑，也必须立刻出结果 ---------- */
+      $('#ucRedrawBtn').click();
+      await wait(30);
+      check('「换一题」同样不滚动，立刻出结果',
+        $('#ucTopicSlot').className.indexOf('is-rolling') < 0 &&
+        $('#ucTopicSlot').className.indexOf('is-hidden') >= 0,
+        $('#ucTopicSlot').className);
+      $('#ucPeekBtn').click();
+      await wait(30);
+      check('「换一题」确实换了一组词', $('#ucTopicSlot').textContent !== shownText,
+        shownText.trim() + '  ->  ' + $('#ucTopicSlot').textContent.trim());
+      $('#ucPeekBtn').click();
+      await wait(30);
+
+      /* ---------- 题目列表：平时折叠，展开可手动指定 ---------- */
+      var topics = window.GAME_CONFIG.undercover.topics;
+      var t0 = topics[0];
+      var t0n = typeof t0.normal === 'string' ? t0.normal : t0.normal.text;
+      var t0s = typeof t0.spy === 'string' ? t0.spy : t0.spy.text;
+
+      check('题目列表默认是折叠的', $('#view #ucPicker').open === false);
+
+      $('#view #ucPicker summary').click();
+      await wait(30);
+      check('点一下标题栏就展开', $('#view #ucPicker').open === true);
+      check('展开后列出全部题目', $$('#view .uc-pick-item').length === topics.length,
+        'items=' + $$('#view .uc-pick-item').length);
+      check('列表只列文字，不放图片', $$('#view .uc-pick-list img').length === 0);
+      check('每条都写明「普通词 / 卧底词」',
+        $$('#view .uc-pick-item')[0].textContent.indexOf(t0n) >= 0 &&
+        $$('#view .uc-pick-item')[0].textContent.indexOf(t0s) >= 0,
+        $$('#view .uc-pick-item')[0].textContent.trim());
+
+      $$('#view .uc-pick-item')[0].click();
+      await wait(30);
+      check('点一组就直接把它指定为本题',
+        !$('#ucStartBtn').disabled && $('#ucTopicSlot').className.indexOf('is-hidden') >= 0,
+        $('#ucTopicSlot').className);
+      check('指定完自动收起列表', $('#view #ucPicker').open === false);
+
+      $('#view #ucPicker summary').click();
+      await wait(30);
+      check('被选中的那一组会高亮',
+        $$('#view .uc-pick-item')[0].classList.contains('is-active'));
+      $('#view #ucPicker summary').click();
+      await wait(30);
+      check('再点一次标题栏就收起', $('#view #ucPicker').open === false);
 
       /* ---------- 改人数 ---------- */
       $('#ucPlus').click();
@@ -250,6 +310,20 @@
       check('只翻开被按住的那一张', $$('#view .uc-card.is-open').length === 1,
         'open=' + $$('#view .uc-card.is-open').length);
 
+      /* 回归：翻转动画会把按钮转到指针命中范围之外，浏览器会跟着补发
+         pointerleave / pointerout。卡片绝不能因此被关掉 —— 这正是
+         「按一下不翻、要点好几下」那个 bug 的成因。 */
+      holdBtn.dispatchEvent(new PointerEvent('pointerleave', {
+        bubbles: false, cancelable: true, pointerId: 11, pointerType: 'mouse', isPrimary: true
+      }));
+      holdBtn.dispatchEvent(new PointerEvent('pointerout', {
+        bubbles: true, cancelable: true, pointerId: 11, pointerType: 'mouse', isPrimary: true
+      }));
+      await wait(150);
+      check('翻转途中收到 pointerleave / pointerout 也不会误关卡片',
+        $$('#view .uc-card.is-open').length === 1,
+        'open=' + $$('#view .uc-card.is-open').length);
+
       window.dispatchEvent(new PointerEvent('pointerup', {
         bubbles: true, cancelable: true, pointerId: 11, pointerType: 'mouse',
         isPrimary: true, buttons: 0
@@ -257,6 +331,21 @@
       await wait(30);
       check('松开 -> 卡片自动盖回去', $$('#view .uc-card.is-open').length === 0);
       check('看过之后标记「已查看」', !$('#view .uc-card .uc-card-seen').hidden);
+
+      /* ---------- 触屏长按 ---------- */
+      var touchBtn = $$('#view .uc-hold-btn')[4];
+      touchBtn.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, cancelable: true, pointerId: 21, pointerType: 'touch',
+        isPrimary: true, buttons: 1
+      }));
+      await wait(30);
+      check('手指按住同样能翻开', $$('#view .uc-card')[4].classList.contains('is-open'));
+      window.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true, cancelable: true, pointerId: 21, pointerType: 'touch',
+        isPrimary: true, buttons: 0
+      }));
+      await wait(30);
+      check('手指松开 -> 卡片盖回去', $$('#view .uc-card.is-open').length === 0);
 
       /* ---------- 恰好 1 个人词不一样 ---------- */
       var words = $$('#view .uc-card').map(function (card) {
@@ -268,6 +357,9 @@
         return words.filter(function (x) { return x === w; }).length;
       }).sort();
       check('恰好 1 个卧底 + 4 个普通玩家', counts[0] === 1 && counts[1] === 4, '分布 ' + counts.join(':'));
+      check('发出来的牌正好是手动指定的那一组',
+        uniq.length === 2 && uniq.indexOf(t0n) >= 0 && uniq.indexOf(t0s) >= 0,
+        uniq.join(' / '));
 
       /* ---------- 一键翻开 / 扣上（永久） ---------- */
       $('#ucFlipBtn').click();
