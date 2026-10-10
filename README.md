@@ -1,6 +1,6 @@
 # 小游戏工具箱
 
-<div style="font-size:30px;border:1px solid;border-radius:10px;padding:10px;text-align: center;margin:6px;color:#7f7f7f;"><p>本项目仍在开发中，不适合直接使用。</p></div>
+> **本项目仍在开发中，不适合直接使用。**
 <!--AI不要改上面这句话-->
 
 线下聚会玩小游戏时的辅助工具站。界面是两栏结构：**左侧导航栏**列出各个小游戏，**右侧主内容区**随所选游戏切换。
@@ -129,6 +129,20 @@ images/undercover/雪碧.png
 
 详细说明见 [`images/undercover/README.md`](images/undercover/README.md)。
 
+## 换背景图
+
+右侧内容区的背景是 `images/bg/night-sky.webp`（由仓库根目录的 `背景.png` 压缩而来，2200px 宽、约 290 KB）。
+想换一张图：把图片压到差不多的尺寸放进 `images/bg/`，改成同名文件即可；也可以直接改
+[`css/style.css`](css/style.css) 里 `.content-bg` 的 `background-image`。
+
+- 背景用 `position: fixed` 固定在视口上，页面滚动时它不动；配合 `background-size: cover` +
+  `background-position: center bottom`，宽屏会裁掉上下、只留画面的下半部分（鸟居 + 晚霞），
+  窄屏（手机）几乎没有裁切，整张图都能看到。
+- `.content-bg::after` 是盖在背景上的一层暗色渐变，所有面板上的文字可读性都靠它。
+  如果换的背景图更亮，把这一段的 `rgba()` 透明度调高一些。
+- 所有面板（`.card` / `.panel` / `.board` …）都是半透明「磨砂玻璃」，配色统一走
+  `css/style.css` 顶部 `:root` 里的变量，换主题色改那里就行。
+
 ## 新增小游戏
 
 1. 在 `js/config.js` 里加一段自己的配置（如 `werewolf: { ... }`）。
@@ -147,6 +161,7 @@ js/drawing-board.js        画板组件：画笔 / 颜色 / 粗细 / 橡皮擦 /
 js/games/draw-guess.js     你画我猜：抽题 → A → B → 结果 的完整流程
 js/games/undercover.js     谁是卧底：抽词 → 发牌 → 按住查看 / 一键翻开
 images/undercover/         ★ 谁是卧底的配图（按词名放图即可）
+images/bg/night-sky.webp   右侧内容区的背景图（由 背景.png 压缩而来）
 js/app.js                  应用入口：导航渲染与游戏切换
 tests/smoke.html           浏览器冒烟测试（自动跑完两个游戏并断言）
 docs/screenshots/          界面截图

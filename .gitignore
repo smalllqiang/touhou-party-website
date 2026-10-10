@@ -1,3 +1,6 @@
 # 谁是卧底题目的图像
 /images/undercover/*
 !/images/undercover/README.md
+
+# AI运行时常见临时文件
+.tmp*
