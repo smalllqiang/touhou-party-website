@@ -58,6 +58,7 @@
 | --- | --- |
 | 加 / 改题目 | `js/config.js` 的 `drawGuess.topics` / `undercover.topics`（写法见 [config.md](config.md)） |
 | 改倒计时 / 轮数 / 人数 | `js/config.js`，刷新页面生效 |
+| 改抽题界面的题目列表 / 手动指定题目 | 两个游戏共用 `.topic-picker*`：样式在 `css/style.css` 的「通用元件」，行为在各自的 `buildPicker()` / `paintPicker()` / `pickTopic()`（见 [games/draw-guess.md](games/draw-guess.md)） |
 | 换背景图 | `images/bg/` + `css/style.css` 的 `.content-bg`（见 [styles.md](styles.md)） |
 | 给卧底词配图 | 图片放进 `images/undercover/`，文件名 = 词 + `imageExt`（见 [assets.md](assets.md)） |
 | 新增小游戏 | [development.md](development.md) 的 4 步 |

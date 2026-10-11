@@ -37,6 +37,7 @@
       screen: 'setup',          // setup | play | result
       pool: [],
       topic: null,
+      spinId: null,              // 抽题滚动动画的 interval 句柄
       round: 1,
       phase: 'A',               // A | B
       artworks: [],             // { round, phase, player, image, blank }
@@ -93,10 +94,88 @@
       return state.topic;
     }
 
+    /* ================= 题目列表：手动直接指定某一题 =================
+       和谁是卧底共用 .topic-picker* 这套元件。列表只建一次，之后只切
+       .is-active 高亮（重建会把列表滚动位置顶回去）。 */
+    function buildPicker() {
+      var host = root.querySelector('#topicPickList');
+      if (!host) return;
+
+      host.innerHTML = C.topics.map(function (t, i) {
+        return '<button type="button" class="topic-pick-item" data-pick="' + i + '">' +
+            '<span class="topic-pick-no">' + (i + 1) + '</span>' +
+            '<span class="topic-pick-word">' + U.escapeHtml(t) + '</span>' +
+          '</button>';
+      }).join('');
+
+      Array.prototype.forEach.call(host.querySelectorAll('[data-pick]'), function (btn) {
+        btn.addEventListener('click', function () {
+          pickTopic(Number(btn.getAttribute('data-pick')));
+        });
+      });
+    }
+
+    function paintPicker() {
+      var host = root.querySelector('#topicPickList');
+      if (!host) return;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-pick]'), function (btn) {
+        var t = C.topics[Number(btn.getAttribute('data-pick'))];
+        btn.classList.toggle('is-active', t !== undefined && t === state.topic);
+      });
+    }
+
+    function pickTopic(index) {
+      var t = C.topics[index];
+      if (t === undefined) return;
+
+      cancelRoll();                 // 滚动动画还在转的话先停下，别覆盖手动选的题
+      state.topic = t;
+      // 从抽题池里拿掉，免得接着点「重来」又抽到刚手动选的这一题
+      state.pool = state.pool.filter(function (x) { return x !== t; });
+
+      showTopic(t, true);
+      paintSetup();
+      var picker = root.querySelector('#topicPicker');
+      if (picker) picker.open = false;   // 选完自动收起，免得被围观的人看光
+      U.beep(988, 90, 0.12);
+    }
+
+    /* 把题目写进题目槽；animate 为真时重播一次 pop 动画 */
+    function showTopic(text, animate) {
+      var slot = root.querySelector('#topicSlot');
+      if (!slot) return;
+      slot.classList.remove('is-empty', 'rolling', 'pop');
+      slot.textContent = text;
+      if (animate) {
+        void slot.offsetWidth;   // 强制重排，否则连续点选时动画不会重播
+        slot.classList.add('pop');
+      }
+    }
+
+    function cancelRoll() {
+      if (state.spinId) {
+        clearInterval(state.spinId);
+        state.spinId = null;
+      }
+    }
+
+    /* 抽题区按钮状态 + 列表高亮，统一在这里刷新 */
+    function paintSetup() {
+      if (state.screen !== 'setup') return;
+      var drawBtn = root.querySelector('#drawBtn');
+      if (!drawBtn) return;
+      var has = !!state.topic;
+      drawBtn.disabled = !C.topics.length;
+      root.querySelector('#redrawBtn').disabled = !has;
+      root.querySelector('#confirmBtn').disabled = !has;
+      paintPicker();
+    }
+
     /* ================= 抽题界面 ================= */
     function renderSetup() {
       state.screen = 'setup';
       state.board = null;
+      cancelRoll();
 
       root.innerHTML =
         '<section class="setup">' +
@@ -109,6 +188,18 @@
               '<button class="btn blue" id="confirmBtn" disabled>确定</button>' +
             '</div>' +
           '</div>' +
+          /* 题目列表：平时折叠，需要时展开手动指定（和谁是卧底同一套元件） */
+          '<details class="topic-picker" id="topicPicker"' + (C.topics.length ? '' : ' hidden') + '>' +
+            '<summary>' +
+              '<span class="topic-picker-title">📋 题目列表</span>' +
+              '<span class="topic-picker-sub">' + C.topics.length + ' 个 · 展开可以直接指定某一题</span>' +
+              '<span class="topic-picker-caret">▾</span>' +
+            '</summary>' +
+            '<div class="topic-picker-body">' +
+              '<p class="topic-picker-tip">点一条就直接把它当本题，不用先「抽」。列表里有全部题目，猜的人在场时小心别被看到。</p>' +
+              '<div class="topic-pick-list" id="topicPickList"></div>' +
+            '</div>' +
+          '</details>' +
           '<div class="setup-grid">' +
             '<div class="card">' +
               '<h3>选手</h3>' +
@@ -140,58 +231,55 @@
           '</div>' +
         '</section>';
 
-      var slot = root.querySelector('#topicSlot');
-      var drawBtn = root.querySelector('#drawBtn');
-      var redrawBtn = root.querySelector('#redrawBtn');
-      var confirmBtn = root.querySelector('#confirmBtn');
       var playerA = root.querySelector('#playerA');
       var playerB = root.querySelector('#playerB');
 
       playerA.value = state.players.A;
       playerB.value = state.players.B;
 
-      function updateButtons() {
-        var has = !!state.topic;
-        redrawBtn.disabled = !has;
-        confirmBtn.disabled = !has;
-      }
-
       function roll() {
+        if (!C.topics.length) return;
+        cancelRoll();
         var finalTopic = drawTopic();
+        var slot = root.querySelector('#topicSlot');
         var ticks = 0;
+
         slot.classList.remove('is-empty', 'pop');
         slot.classList.add('rolling');
-        updateButtons();
+        paintSetup();
 
-        var spinId = every(function () {
+        state.spinId = every(function () {
           ticks++;
-          slot.textContent = C.topics[Math.floor(Math.random() * C.topics.length)];
           if (ticks >= 14) {
-            clearInterval(spinId);
-            slot.textContent = finalTopic;
-            slot.classList.remove('rolling');
-            slot.classList.add('pop');
+            cancelRoll();
+            showTopic(finalTopic, true);
+            paintPicker();
             U.beep(1046, 90, 0.12);
+            return;
           }
+          slot.textContent = C.topics[Math.floor(Math.random() * C.topics.length)];
         }, 55);
       }
 
-      drawBtn.addEventListener('click', roll);
-      redrawBtn.addEventListener('click', roll);
+      root.querySelector('#drawBtn').addEventListener('click', roll);
+      root.querySelector('#redrawBtn').addEventListener('click', roll);
 
-      confirmBtn.addEventListener('click', function () {
+      root.querySelector('#confirmBtn').addEventListener('click', function () {
         if (!state.topic) return;
         state.players.A = (playerA.value || '').trim() || '选手A';
         state.players.B = (playerB.value || '').trim() || '选手B';
         startGame();
       });
 
-      updateButtons();
+      buildPicker();
+      paintSetup();
+      if (state.topic) showTopic(state.topic, false);
       return { destroy: destroy };
     }
 
     function startGame() {
       clearPending();
+      cancelRoll();
       state.artworks = [];
       state.round = 1;
       state.phase = 'A';
@@ -565,6 +653,7 @@
       state.destroyed = true;
       clearPending();
       stopTimer();
+      cancelRoll();
       state.board = null;
       root.innerHTML = '';
     }

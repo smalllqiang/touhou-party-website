@@ -7,7 +7,7 @@
 ## 流程与状态机
 
 ```
-setup ──[确认抽题]──> play(phase=A, round=1)
+setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase=A, round=1)
                         │
                   [完成画图] → play(phase=B, round=n)
                         │
@@ -27,6 +27,7 @@ setup ──[确认抽题]──> play(phase=A, round=1)
 | `screen` | `setup` / `play` / `result` |
 | `pool` | 未抽的题目（洗牌后的副本）；空了才重新洗牌 |
 | `topic` | 本局起始题目（字符串） |
+| `spinId` | 抽题滚动动画的 `setInterval` 句柄；换题 / 手动指定 / 离开 setup 时清掉 |
 | `round` / `phase` | 当前轮次（1 基）与阶段 |
 | `artworks` | 已捕获作品数组，见下 |
 | `players` | `{ A, B }` 当前选手名 |
@@ -48,8 +49,14 @@ setup ──[确认抽题]──> play(phase=A, round=1)
 | --- | --- |
 | `getConfig()` | 读取并兜底 `GAME_CONFIG.drawGuess`（每次 `mount()` 一次） |
 | `drawTopic()` | 从 `pool` 取题；池空则用「排除当前题后的全集」重新洗牌 |
-| `renderSetup()` | 抽题界面（抽 / 重来 / 确定、选手名输入、设置与玩法卡片） |
-| `roll()` | 抽题动画：`every(55ms)` 共 14 tick 随机显示题目池文本，落定后 `pop` 动画 + 提示音 |
+| `buildPicker()` | 只建一次题目列表（`#topicPickList`），每条 `[data-pick]` 绑 `pickTopic()` |
+| `paintPicker()` | 只切 `.topic-pick-item.is-active` 高亮，不重建列表（重建会顶回滚动位置） |
+| `pickTopic(i)` | 手动指定第 `i` 题：`cancelRoll()` → 写 `state.topic` → 从 `pool` 移除该题 → `showTopic(t, true)` → `paintSetup()` → 收起 `<details>` → 提示音 |
+| `showTopic(text, animate)` | 把文本写进 `#topicSlot`；`animate` 时强制重排再 `pop`，保证连续点选动画能重播 |
+| `cancelRoll()` | 清掉 `state.spinId`（抽题动画中途换题 / 指定 / 卸载时调用） |
+| `paintSetup()` | 统一刷新抽题区按钮禁用态（`#drawBtn` / `#redrawBtn` / `#confirmBtn`）+ 列表高亮 |
+| `renderSetup()` | 抽题界面（抽 / 重来 / 确定、题目列表、选手名输入、设置与玩法卡片） |
+| `roll()` | 抽题动画：`every(55ms)` 共 14 tick 随机显示题目池文本，落定后 `showTopic()` + `pop` 动画 + 提示音 + `paintPicker()` |
 | `startGame()` | 清定时器、清空作品、`round=1`、`phase=A`，进入 `renderPlay()` |
 | `renderPlay()` | 构建游戏界面、创建画板、绑定按钮、`startTimer()` |
 | `startTimer()` / `tick()` / `paintTimer()` | 计时模型（见下） |
@@ -62,6 +69,17 @@ setup ──[确认抽题]──> play(phase=A, round=1)
 | `renderResult()` | 结果页：起始题目 + 全部作品 + 保存 / 再玩一局 |
 | `fileNameFor(a)` | 保存文件名：`第{round}轮-{A\|B}{画图\|猜词}-{player}.png`，经 `Utils.safeFileName` 清洗 |
 | `destroy()` | 置 `destroyed`、清定时器、`board = null`、清空 `root` |
+
+## 手动指定题目（题目列表）
+
+抽题区下方有一个折叠的 `<details class="topic-picker" id="topicPicker">`，和谁是卧底**共用同一套 `.topic-picker*` 元件**（样式在 `css/style.css` 的「通用元件」章节，代码在两边各有一份 `buildPicker()` / `paintPicker()` / `pickTopic()`）。
+
+- 默认折叠；点标题栏展开，列出 `topics` 全部条目（`.topic-pick-item`，只列文字编号，不放图片）。
+- `pickTopic(i)`：点一条就直接把第 `i` 题当本题，不用先「抽」——写 `state.topic`、从 `state.pool` 里移除该题（避免接着点「重来」又抽到它）、`showTopic(t, true)` 重播 pop 动画、刷新按钮态，然后把 `<details>` 收起（防围观泄题），响一声 988Hz。
+- 列表只建一次，`paintPicker()` 只切 `.is-active` 高亮；随机抽题（`roll()`）落定后也调用 `paintPicker()`，所以高亮始终跟着 `state.topic` 走。
+- 点「重来」或「抽」会走原来的滚动动画，高亮随之移动。
+- 「再玩一局」回到 `renderSetup()` 时 `state.topic` 已清空，高亮自然消失。
+- 列表会把题池全部摊开，这是刻意设计（给主持人手动指定用）；它只出现在 setup 界面，`renderPlay()` 一替换 DOM 就没了。
 
 ## 计时模型
 
@@ -91,6 +109,7 @@ setup ──[确认抽题]──> play(phase=A, round=1)
 | 阶段 | 选择器 | 说明 |
 | --- | --- | --- |
 | setup | `#topicSlot` `#drawBtn` `#redrawBtn` `#confirmBtn` | 抽题区；`is-empty` / `rolling` / `pop` 是状态类 |
+| setup | `#topicPicker` `#topicPickList` `[data-pick="<i>"]` `.topic-pick-item` | 折叠的题目列表（与谁是卧底共用）；点一条直接指定本题，`.is-active` 是当前题高亮 |
 | setup | `#playerA` `#playerB` | 选手名输入（`maxlength=12`） |
 | play | `#timer` `.timer-value` `.timer-bar i` | 倒计时数字与进度条（`i` 的 `width` 是比例） |
 | play | `#boardHost` | 画板挂载点（`DrawingBoard.create` 的 host） |
@@ -117,6 +136,8 @@ setup ──[确认抽题]──> play(phase=A, round=1)
 
 - `renderSetup()` 会把 `state.board` 置 `null`；`state.board` 只在 play 阶段有效。
 - `roll()` 会先消耗题目（`drawTopic()`）再滚动；滚动过程中可能一闪而过地显示最终题目，这是动画的副作用，不影响正确性（题目对 A 不是秘密）。
+- 抽题动画进行中从题目列表点选时，`pickTopic()` 会先 `cancelRoll()`；否则动画落定会用 `finalTopic` 覆盖刚手动选的题。手动指定还会把该题从 `state.pool` 移除。
+- 题目列表的类名是**通用**的 `.topic-picker*` / `.topic-pick-*`（不带 `dg-` / `uc-` 前缀），你画我猜与谁是卧底共用；改结构或样式时两边都要照顾到。
 - `inputBlockedUntil` 只在 `renderPlay()` 里设置，`renderResult()` 里没有；在结果页连点不会误触。
 - `board.hasInk()` 在「清空后撤销」时会返回 `false` 但画面有内容，这是画板组件的已知行为，见 [../drawing-board.md](../drawing-board.md)。
 - `destroy()` 后再触发的定时回调都会因 `destroyed` 检查而失效。

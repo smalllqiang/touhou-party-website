@@ -415,6 +415,118 @@ ol, ul { padding: 0; list-style: none; }
 .tag.a { background: var(--accent-soft); color: var(--accent-ink); }
 .tag.b { background: var(--blue-soft); color: #a8c2ff; }
 
+/* ---------------- 题目列表（折叠，可直接指定一题） ----------------
+   你画我猜 / 谁是卧底共用：抽题界面里展开列表，点一条就直接当本题。
+   两处用同一组 .topic-picker* 类名；谁是卧底的条目是「普通词 / 卧底词」两段，
+   你画我猜只有一段。改这里两个游戏一起变。 */
+.topic-picker {
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  overflow: hidden;
+}
+
+.topic-picker[hidden] { display: none; }
+
+.topic-picker > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background .15s;
+}
+
+.topic-picker > summary::-webkit-details-marker { display: none; }
+.topic-picker > summary:hover { background: var(--glass-soft); }
+
+.topic-picker-title { font-weight: 700; }
+.topic-picker-sub { font-size: 12.5px; color: var(--muted); }
+
+.topic-picker-caret {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  transition: transform .2s;
+}
+
+.topic-picker[open] .topic-picker-caret { transform: rotate(180deg); }
+
+.topic-picker-body {
+  border-top: 1px solid var(--line);
+  padding: 14px 20px 16px;
+}
+
+.topic-picker-tip { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+.topic-picker-tip b { color: var(--ink-soft); }
+
+.topic-pick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 8px;
+  max-height: 296px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.topic-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--glass-soft);
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+
+.topic-pick-item:hover {
+  border-color: rgba(255, 255, 255, .34);
+  background: var(--glass-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+.topic-pick-item.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.topic-pick-no {
+  flex: 0 0 auto;
+  min-width: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: right;
+}
+
+.topic-pick-word {
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topic-pick-word.spy { color: var(--accent-ink); }
+.topic-pick-sep { flex: 0 0 auto; color: var(--muted); }
+
 /* ============================================================
    你画我猜 —— 抽题界面
    ============================================================ */
@@ -1080,114 +1192,7 @@ ol, ul { padding: 0; list-style: none; }
 
 .uc-topic-row.spy b { color: var(--accent-ink); }
 
-/* ---------------- 题目列表（折叠，可手动指定） ---------------- */
-.uc-picker {
-  background: var(--glass);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  overflow: hidden;
-}
-
-.uc-picker[hidden] { display: none; }
-
-.uc-picker > summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 20px;
-  font-size: 14px;
-  color: var(--ink);
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  -webkit-user-select: none;
-  transition: background .15s;
-}
-
-.uc-picker > summary::-webkit-details-marker { display: none; }
-.uc-picker > summary:hover { background: var(--glass-soft); }
-
-.uc-picker-title { font-weight: 700; }
-.uc-picker-sub { font-size: 12.5px; color: var(--muted); }
-
-.uc-picker-caret {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 13px;
-  transition: transform .2s;
-}
-
-.uc-picker[open] .uc-picker-caret { transform: rotate(180deg); }
-
-.uc-picker-body {
-  border-top: 1px solid var(--line);
-  padding: 14px 20px 16px;
-}
-
-.uc-picker-tip { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
-.uc-picker-tip b { color: var(--ink-soft); }
-
-.uc-pick-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
-  gap: 8px;
-  max-height: 296px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.uc-pick-item {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  min-width: 0;
-  padding: 8px 10px;
-  font: inherit;
-  font-size: 13.5px;
-  color: var(--ink);
-  text-align: left;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--glass-soft);
-  cursor: pointer;
-  transition: border-color .15s, background .15s, box-shadow .15s;
-}
-
-.uc-pick-item:hover {
-  border-color: rgba(255, 255, 255, .34);
-  background: var(--glass-hover);
-  box-shadow: var(--shadow-sm);
-}
-
-.uc-pick-item.is-active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
-.uc-pick-no {
-  flex: 0 0 auto;
-  min-width: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  text-align: right;
-}
-
-.uc-pick-word {
-  min-width: 0;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.uc-pick-word.spy { color: var(--accent-ink); }
-.uc-pick-sep { flex: 0 0 auto; color: var(--muted); }
+/* 题目列表（.topic-picker*）是通用元件，样式在「通用元件」章节 */
 
 /* ---------------- 人数与名字 ---------------- */
 .uc-stepper {

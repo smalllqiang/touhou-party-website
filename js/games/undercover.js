@@ -224,16 +224,17 @@
             '</div>' +
           '</div>' +
 
-          /* 题目列表：平时折叠着，需要时展开手动指定一组 */
-          '<details class="uc-picker" id="ucPicker"' + (C.topics.length ? '' : ' hidden') + '>' +
+          /* 题目列表：平时折叠着，需要时展开手动指定一组。
+             这套 .topic-picker* 是通用元件，你画我猜的抽题界面也用同一套。 */
+          '<details class="topic-picker" id="topicPicker"' + (C.topics.length ? '' : ' hidden') + '>' +
             '<summary>' +
-              '<span class="uc-picker-title">📋 题目列表</span>' +
-              '<span class="uc-picker-sub">' + C.topics.length + ' 组 · 展开可以直接指定某一组</span>' +
-              '<span class="uc-picker-caret">▾</span>' +
+              '<span class="topic-picker-title">📋 题目列表</span>' +
+              '<span class="topic-picker-sub">' + C.topics.length + ' 组 · 展开可以直接指定某一组</span>' +
+              '<span class="topic-picker-caret">▾</span>' +
             '</summary>' +
-            '<div class="uc-picker-body">' +
-              '<p class="uc-picker-tip">左边是<b>普通玩家</b>看到的词，右边是<b>卧底</b>看到的词。点一组就直接用它出题。</p>' +
-              '<div class="uc-pick-list" id="ucPickList"></div>' +
+            '<div class="topic-picker-body">' +
+              '<p class="topic-picker-tip">左边是<b>普通玩家</b>看到的词，右边是<b>卧底</b>看到的词。点一组就直接用它出题。</p>' +
+              '<div class="topic-pick-list" id="topicPickList"></div>' +
             '</div>' +
           '</details>' +
 
@@ -397,17 +398,17 @@
       });
     }
 
-    /* ---------- 题目列表：手动指定某一组 ---------- */
+    /* ---------- 题目列表：手动指定某一组（通用元件，你画我猜也用这套） ---------- */
     function buildPicker() {
-      var host = root.querySelector('#ucPickList');
+      var host = root.querySelector('#topicPickList');
       if (!host) return;
 
       host.innerHTML = C.topics.map(function (t, i) {
-        return '<button type="button" class="uc-pick-item" data-pick="' + i + '">' +
-            '<span class="uc-pick-no">' + (i + 1) + '</span>' +
-            '<span class="uc-pick-word">' + esc(t.normal.text) + '</span>' +
-            '<span class="uc-pick-sep">/</span>' +
-            '<span class="uc-pick-word spy">' + esc(t.spy.text) + '</span>' +
+        return '<button type="button" class="topic-pick-item" data-pick="' + i + '">' +
+            '<span class="topic-pick-no">' + (i + 1) + '</span>' +
+            '<span class="topic-pick-word">' + esc(t.normal.text) + '</span>' +
+            '<span class="topic-pick-sep">/</span>' +
+            '<span class="topic-pick-word spy">' + esc(t.spy.text) + '</span>' +
           '</button>';
       }).join('');
 
@@ -420,7 +421,7 @@
 
     /* 只更新高亮，不重建列表（否则调人数时会把列表的滚动位置顶回去） */
     function paintPicker() {
-      var host = root.querySelector('#ucPickList');
+      var host = root.querySelector('#topicPickList');
       if (!host) return;
       Array.prototype.forEach.call(host.querySelectorAll('[data-pick]'), function (btn) {
         var t = C.topics[Number(btn.getAttribute('data-pick'))];
@@ -438,7 +439,7 @@
       state.pool = state.pool.filter(function (x) { return x !== t; });
 
       paintSetup();
-      var picker = root.querySelector('#ucPicker');
+      var picker = root.querySelector('#topicPicker');
       if (picker) picker.open = false;   // 选完自动收起，免得被围观的人看光
       U.beep(988, 90, 0.12);
     }

@@ -55,7 +55,7 @@ setup ──[开始发牌]──> reveal ──[换一题重发]──> reveal�
 - `drawTopic()`：池空时用「排除当前题后的全集」重新洗牌；从池尾 `pop()`。
 - `roll()`（「抽题」/「换一题」）：**只做抽取，没有滚动动画**。
   - 约束：不要恢复滚动动画。滚动时会一闪而过地掠过题目池里的其它词，等于泄题。`state.topicVisible` 被重置为 `false`（抽到的题默认藏着）。
-- 手动指定：`<details class="uc-picker">` 里的题目列表（`buildPicker()` 只建一次，`paintPicker()` 只切 `.is-active` 高亮）。`pickTopic(i)` 会：
+- 手动指定：`<details class="topic-picker" id="topicPicker">` 里的题目列表（**通用元件，你画我猜的抽题界面也用同一套**；`buildPicker()` 只建一次，`paintPicker()` 只切 `.topic-pick-item.is-active` 高亮）。`pickTopic(i)` 会：
   1. `state.topic = C.topics[i]`，`topicVisible = false`
   2. 把该组从 `state.pool` 移除（避免接着点「抽题」又抽到它）
   3. 把 `<details>` 收起（`open = false`），避免被围观的人看到
@@ -109,7 +109,7 @@ setup ──[开始发牌]──> reveal ──[换一题重发]──> reveal�
 | --- | --- | --- |
 | setup | `#ucTopicSlot` | 题目槽；类：`is-empty` / `is-hidden`（已抽到但藏着）/ `is-shown`（主持人查看中） |
 | setup | `#ucDrawBtn` `#ucRedrawBtn` `#ucPeekBtn` `#ucStartBtn` | 抽题 / 换一题 / 查看本题 / 开始发牌；`paintSetup()` 统一刷新禁用态与文案 |
-| setup | `#ucPicker` `#ucPickList` `[data-pick="<i>"]` | 折叠的题目列表；`hidden` 且无选项时不渲染（`topics` 为空时） |
+| setup | `#topicPicker` `#topicPickList` `[data-pick="<i>"]` `.topic-pick-item` | 折叠的题目列表（通用元件，你画我猜也用这套类名）；`hidden` 且无选项时不渲染（`topics` 为空时） |
 | setup | `#ucCount` `#ucMinus` `#ucPlus` `#ucCountTip` | 人数步进器与提示 |
 | setup | `#ucNames` `[data-name="<i>"]` | 名字输入列表；`paintNames()` 会整体重建（只在人数 / 屏幕变化时调用） |
 | setup | `#ucStats` | 本局设置摘要（人数 / 卧底 / 普通玩家 / 题目数量） |

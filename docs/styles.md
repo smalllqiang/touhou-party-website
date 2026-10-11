@@ -12,15 +12,15 @@
 | 右侧背景图 | `.content-bg`（`position: fixed`）+ `.content-bg::after`（暗化层） |
 | 左侧导航栏 | `.sidebar`、`.brand*`、`.nav`、`.nav-item`、`.sidebar-footer` |
 | 右侧内容区 | `.content`、`.content-header`、`.content-body`、`.page-subtitle` |
-| 通用元件 | `.btn`（`primary` / `blue` / `ghost` / `small` / `danger`）、`.card`、`.panel`、`.tag`（`.a` / `.b`）、`.topic*`、`.settings-list`、`.hint`、`.muted`、`.eyebrow` |
+| 通用元件 | `.btn`（`primary` / `blue` / `ghost` / `small` / `danger`）、`.card`、`.panel`、`.tag`（`.a` / `.b`）、`.topic*`、`.topic-picker*`（折叠题目列表，你画我猜与谁是卧底共用）、`.settings-list`、`.hint`、`.muted`、`.eyebrow` |
 | 你画我猜 —— 抽题界面 | `.setup`、`.topic-stage`、`.setup-grid`、`.rolling` / `.pop` 动画 |
 | 你画我猜 —— 画板 | `.board*`、`.swatch`、`.size-control`、`.size-preview`、`.tool-btn` |
 | 你画我猜 —— 游戏界面 | `.play*`、`.timer*`、`.timeup*` |
 | 你画我猜 —— 结果页 | `.result*`、`.artworks`、`.artwork-card` |
-| 谁是卧底 | `.uc-*`（设置 / 题目列表 / 人数与名字 / 发牌 / 卡片 / 横幅） |
+| 谁是卧底 | `.uc-*`（设置 / 人数与名字 / 发牌 / 卡片 / 横幅） |
 | 响应式 | `@media (prefers-reduced-motion)`、`(max-width: 1100px)`、`(max-width: 820px)` |
 
-class 命名约定：谁是卧底专属一律 `uc-` 前缀；画板一律 `board` 前缀；其余为通用或你画我猜。
+class 命名约定：谁是卧底专属一律 `uc-` 前缀；画板一律 `board` 前缀；其余为通用或你画我猜。跨游戏复用的元件用通用名（如 `.topic-picker*`、`.topic-pick-*`），**不**带 `dg-` / `uc-` 前缀。
 
 ## 主题变量（`:root`）
 

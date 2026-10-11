@@ -72,6 +72,11 @@
         $('#pageTitle').textContent);
 
       /* ---------- 抽题 ---------- */
+      /* 轮数断言跟着 config 走：改 js/config.js 的 rounds 不应该让测试失败 */
+      var dgRounds = Math.max(1, parseInt(window.GAME_CONFIG.drawGuess.rounds, 10) || 3);
+      var dgPhases = dgRounds * 2;
+      var dgTopics = window.GAME_CONFIG.drawGuess.topics;
+
       check('初始为抽题界面', !!$('#view #drawBtn'));
       check('初始「重来/确定」禁用', $('#redrawBtn').disabled && $('#confirmBtn').disabled);
 
@@ -81,7 +86,7 @@
 
       var topic = $('#topicSlot').textContent.trim();
       check('抽到一个非空题目', topic.length > 0, topic);
-      check('题目来自 config 列表', window.GAME_CONFIG.drawGuess.topics.indexOf(topic) >= 0);
+      check('题目来自 config 列表', dgTopics.indexOf(topic) >= 0);
       check('「重来/确定」已可用', !$('#redrawBtn').disabled && !$('#confirmBtn').disabled);
 
       /* ---------- 重来 ---------- */
@@ -90,10 +95,50 @@
       check('重来后仍有题目', $('#topicSlot').textContent.trim().length > 0,
         $('#topicSlot').textContent.trim());
 
+      /* ---------- 题目列表：平时折叠，展开可以直接点选 ----------
+         和谁是卧底共用 .topic-picker* 元件，行为要对齐：
+         折叠 -> 展开 -> 点一条直接当本题 -> 自动收起 + 高亮。 */
+      var lastIdx = dgTopics.length - 1;
+      var lastTopic = dgTopics[lastIdx];
+
+      check('你画我猜也有折叠的题目列表',
+        !!$('#view #topicPicker') && $('#view #topicPicker').open === false);
+      check('列表条数 = 题目数量', $$('#view .topic-pick-item').length === dgTopics.length,
+        'items=' + $$('#view .topic-pick-item').length);
+      check('列表只列文字，不放图片', $$('#view .topic-pick-list img').length === 0);
+
+      $('#view #topicPicker summary').click();
+      await wait(30);
+      check('点一下标题栏就展开', $('#view #topicPicker').open === true);
+
+      $$('#view .topic-pick-item')[lastIdx].click();
+      await wait(30);
+      check('点一条就直接把它当本题', $('#topicSlot').textContent.trim() === lastTopic,
+        $('#topicSlot').textContent.trim());
+      check('点选后「重来/确定」可用', !$('#redrawBtn').disabled && !$('#confirmBtn').disabled);
+      check('指定完自动收起列表', $('#view #topicPicker').open === false);
+
+      $('#view #topicPicker summary').click();
+      await wait(30);
+      check('被选中的那一条会高亮',
+        $$('#view .topic-pick-item')[lastIdx].classList.contains('is-active'));
+      $('#view #topicPicker summary').click();
+      await wait(30);
+
+      /* 重新「抽」之后，高亮要跟着抽到的题目走 */
+      $('#drawBtn').click();
+      await wait(1500);
+      var drawn = $('#topicSlot').textContent.trim();
+      var actives = $$('#view .topic-pick-item.is-active');
+      check('重新抽题后高亮跟着移动',
+        actives.length === 1 && actives[0].textContent.indexOf(drawn) >= 0,
+        drawn + ' / active=' + actives.length);
+
       /* ---------- 确定 -> 进入游戏 ---------- */
       $('#confirmBtn').click();
       check('进入游戏界面', !!$('#view #boardHost canvas'));
-      check('顶部显示第 1/N 轮', ($('#view .play-meta').textContent || '').indexOf('第 1 / 3 轮') >= 0,
+      check('顶部显示第 1/N 轮',
+        ($('#view .play-meta').textContent || '').indexOf('第 1 / ' + dgRounds + ' 轮') >= 0,
         $('#view .play-meta').textContent.trim());
       check('A 阶段能看到题目', !!$('#view .topic-small'));
       check('画板工具栏：颜色 / 粗细 / 橡皮擦',
@@ -117,7 +162,7 @@
           check('B 阶段不再显示题目，只给参考画',
             !$('#view .topic-small') && !!$('#view .ref-img'), '');
         }
-        if (meta && meta.textContent.indexOf('第 2 / 3 轮') >= 0) { seenTopicAgain = true; }
+        if (meta && meta.textContent.indexOf('第 2 / ' + dgRounds + ' 轮') >= 0) { seenTopicAgain = true; }
 
         drawStroke();
         await wait(120);
@@ -129,15 +174,15 @@
         await wait(250);
       }
 
-      check('6 个阶段全部走完', phases === 6, 'phases=' + phases);
+      check(dgPhases + ' 个阶段全部走完', phases === dgPhases, 'phases=' + phases);
       check('过程中出现过 B 猜词阶段', seenB);
       check('第 2 轮开始 A 参考上一轮猜词', seenTopicAgain);
       check('进入结果页', !!$('#view .result'));
-      check('结果页展示 6 张作品', $$('#view .artwork-card').length === 6,
+      check('结果页展示 ' + dgPhases + ' 张作品', $$('#view .artwork-card').length === dgPhases,
         'cards=' + $$('#view .artwork-card').length);
       check('结果页显示起始题目', ($('#view .result-topic').textContent || '').trim().length > 0,
         $('#view .result-topic').textContent.trim());
-      check('每张作品都有保存按钮', $$('#view [data-save]').length === 6);
+      check('每张作品都有保存按钮', $$('#view [data-save]').length === dgPhases);
       check('作品图片是 PNG dataURL',
         ($('#view .artwork-card img') || {}).src ? $('#view .artwork-card img').src.indexOf('data:image/png') === 0 : false);
       check('有「保存全部作品」按钮', !!$('#view #saveAllBtn') && !$('#saveAllBtn').disabled);
@@ -147,6 +192,8 @@
       $('#againBtn').click();
       check('回到抽题界面', !!$('#view #drawBtn'));
       check('重新开始后作品已清空', $$('#view .artwork-card').length === 0);
+      check('重新开始后题目列表高亮已清空',
+        $$('#view .topic-pick-item.is-active').length === 0);
 
       /* ---------- 倒计时到点自动进入下一阶段 ---------- */
       window.GAME_CONFIG.drawGuess.timer = { a: 2, b: 2 };
@@ -244,33 +291,33 @@
       var t0n = typeof t0.normal === 'string' ? t0.normal : t0.normal.text;
       var t0s = typeof t0.spy === 'string' ? t0.spy : t0.spy.text;
 
-      check('题目列表默认是折叠的', $('#view #ucPicker').open === false);
+      check('题目列表默认是折叠的', $('#view #topicPicker').open === false);
 
-      $('#view #ucPicker summary').click();
+      $('#view #topicPicker summary').click();
       await wait(30);
-      check('点一下标题栏就展开', $('#view #ucPicker').open === true);
-      check('展开后列出全部题目', $$('#view .uc-pick-item').length === topics.length,
-        'items=' + $$('#view .uc-pick-item').length);
-      check('列表只列文字，不放图片', $$('#view .uc-pick-list img').length === 0);
+      check('点一下标题栏就展开', $('#view #topicPicker').open === true);
+      check('展开后列出全部题目', $$('#view .topic-pick-item').length === topics.length,
+        'items=' + $$('#view .topic-pick-item').length);
+      check('列表只列文字，不放图片', $$('#view .topic-pick-list img').length === 0);
       check('每条都写明「普通词 / 卧底词」',
-        $$('#view .uc-pick-item')[0].textContent.indexOf(t0n) >= 0 &&
-        $$('#view .uc-pick-item')[0].textContent.indexOf(t0s) >= 0,
-        $$('#view .uc-pick-item')[0].textContent.trim());
+        $$('#view .topic-pick-item')[0].textContent.indexOf(t0n) >= 0 &&
+        $$('#view .topic-pick-item')[0].textContent.indexOf(t0s) >= 0,
+        $$('#view .topic-pick-item')[0].textContent.trim());
 
-      $$('#view .uc-pick-item')[0].click();
+      $$('#view .topic-pick-item')[0].click();
       await wait(30);
       check('点一组就直接把它指定为本题',
         !$('#ucStartBtn').disabled && $('#ucTopicSlot').className.indexOf('is-hidden') >= 0,
         $('#ucTopicSlot').className);
-      check('指定完自动收起列表', $('#view #ucPicker').open === false);
+      check('指定完自动收起列表', $('#view #topicPicker').open === false);
 
-      $('#view #ucPicker summary').click();
+      $('#view #topicPicker summary').click();
       await wait(30);
       check('被选中的那一组会高亮',
-        $$('#view .uc-pick-item')[0].classList.contains('is-active'));
-      $('#view #ucPicker summary').click();
+        $$('#view .topic-pick-item')[0].classList.contains('is-active'));
+      $('#view #topicPicker summary').click();
       await wait(30);
-      check('再点一次标题栏就收起', $('#view #ucPicker').open === false);
+      check('再点一次标题栏就收起', $('#view #topicPicker').open === false);
 
       /* ---------- 改人数 ---------- */
       $('#ucPlus').click();
