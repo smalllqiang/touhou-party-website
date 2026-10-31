@@ -1,6 +1,14 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 测试产物
+test-results/
+playwright-report/
+
 # 谁是卧底题目的图像
-/images/undercover/*
-!/images/undercover/README.md
+/public/images/undercover/*
+!/public/images/undercover/README.md
 
 # AI运行时常见临时文件
 .tmp*

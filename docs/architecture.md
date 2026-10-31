@@ -1,114 +1,121 @@
 # 架构
 
-改动架构（新增全局、改加载顺序、改 DOM 契约、改路由）后必须同步本文件。
+改动架构（新增全局单例、改路由、改游戏注册方式、改生命周期约定）后必须同步本文件。
 
-## 技术栈与硬约束
+## 技术栈
 
 | 项 | 事实 |
 | --- | --- |
-| 语言 | 原生 HTML / CSS / JavaScript，**ES5 语法**（`var` + `function`） |
-| 构建 | 无。没有 `package.json`、打包器、转译器 |
-| 依赖 | 无。不引入第三方库 / CDN |
-| 模块系统 | 无。IIFE + `window` 全局对象通信 |
-| 网络请求 | 无（未使用 `fetch` / `XMLHttpRequest`）；只加载本地静态资源，主要是图片 |
-| 持久化 | 无（未使用 `localStorage` / `sessionStorage` / cookie）。刷新 = 状态全部重置 |
-| 后端 | 无。`file://` 直开或任意静态服务器均可运行 |
-| 测试 | 浏览器内自跑，见 [testing.md](testing.md) |
+| 框架 | Vue 3.5，`<script setup>` + TypeScript（strict） |
+| 构建 | Vite 7，`@vitejs/plugin-vue` |
+| 路由 | `vue-router` 4，`createWebHashHistory()`（`#/draw-guess`） |
+| 样式 | 单文件全局 CSS（[`src/styles/main.css`](../src/styles/main.css)），无预处理器 / UI 框架 |
+| 状态管理 | 不引入 Pinia；状态放 composable 或组件内 |
+| 网络请求 | 无。只加载本地静态资源（图片、构建产物） |
+| 持久化 | 无。刷新 = 状态全部重置 |
+| 后端 | 无。`npm run build` 后是纯静态 `dist/` |
+| 测试 | Vitest（逻辑）+ Playwright（浏览器流程），见 [testing.md](testing.md) |
 
-## 文件与职责
+## 启动流程
 
-| 路径 | 职责 |
+```text
+index.html
+└─ src/main.ts
+   ├─ import ./styles/main.css
+   ├─ createApp(App).use(router)
+   └─ mount('#app')
+      └─ App.vue
+         ├─ 侧栏导航（来自 games/registry.ts）
+         ├─ <RouterView />（当前游戏的 View 组件）
+         └─ <Lightbox />（Teleport 到 body）
+```
+
+- `src/main.ts` 是唯一入口；`index.html` 只保留 `#app` 挂载点和模块脚本。
+- `App.vue` 用 `route.name` 从注册表找当前游戏，驱动 `<h1>`、副标题、`document.title` 和导航高亮。**注册表的 `id` 必须与路由名一致**。
+- 首次进入 `#/` 会重定向到注册表第一项；未知 hash 走 catch-all 重定向到同一项。
+- 切换游戏用 `router.replace`：浏览器后退不会在游戏之间切换。
+
+## 游戏注册与路由
+
+[`src/games/registry.ts`](../src/games/registry.ts) 是唯一的游戏清单，`GameDefinition` 包含：
+
+| 字段 | 用途 |
 | --- | --- |
-| [`index.html`](../index.html) | 页面骨架：左侧导航 + 右侧内容区 + lightbox + 脚本加载 |
-| [`css/style.css`](../css/style.css) | 全部样式（单文件，见 [styles.md](styles.md)） |
-| [`js/config.js`](../js/config.js) | 唯一配置源，赋值 `window.GAME_CONFIG`（见 [config.md](config.md)） |
-| [`js/utils.js`](../js/utils.js) | `window.Utils` 通用工具 |
-| [`js/drawing-board.js`](../js/drawing-board.js) | `window.DrawingBoard` 画板组件（见 [drawing-board.md](drawing-board.md)） |
-| [`js/games/draw-guess.js`](../js/games/draw-guess.js) | `window.DrawGuessGame`（见 [games/draw-guess.md](games/draw-guess.md)） |
-| [`js/games/undercover.js`](../js/games/undercover.js) | `window.UndercoverGame`（见 [games/undercover.md](games/undercover.md)） |
-| [`js/app.js`](../js/app.js) | 游戏注册表、导航渲染、游戏切换、hash 路由 |
-| [`tests/smoke.html`](../tests/smoke.html) | 冒烟测试页 |
-| [`images/`](../images/) | 静态图片（见 [assets.md](assets.md)） |
+| `id` | 路由名、hash 值、注册表主键 |
+| `name` / `icon` / `desc` | 侧栏导航 |
+| `title` / `subtitle` | 内容区标题与副标题 |
+| `component` | 游戏根组件 |
 
-## 脚本加载顺序（index.html 末尾）
+[`src/router/index.ts`](../src/router/index.ts) 直接由注册表生成路由，所以新增游戏只需要在注册表加一项，无需改路由文件。
 
-```
-js/config.js
-→ js/utils.js
-→ js/drawing-board.js
-→ js/games/draw-guess.js
-→ js/games/undercover.js
-→ js/app.js
+## 组件树与状态归属
+
+### 你画我猜
+
+```text
+DrawGuessView.vue
+├─ useDrawGuess.ts          # 全部游戏状态 + 状态机
+├─ SetupScreen.vue          # 抽题 / 题目列表 / 选手名
+├─ PlayScreen.vue           # 计时、侧栏、画板、时间到遮罩
+│  └─ DrawingBoard.vue
+└─ ResultScreen.vue         # 作品列表 / 保存 / 再玩一局
 ```
 
-- 顺序即依赖顺序：后加载的脚本在**顶层**就读取前面的全局对象。
-- `js/app.js` 加载时会立即 `open()` 首个游戏，**必须最后加载**。
-- 新游戏脚本必须插在 `js/app.js` 之前；它依赖的组件（如画板）必须排在它之前。
+- `useDrawGuess` 持有 `screen`、`topic`、`round`、`phase`、`artworks`、计时与锁定状态。
+- `PlayScreen` 用 `:key="phase-round"` 强制重挂载：每进入一个阶段就是一块新画板，避免跨阶段残留笔迹。
+- 画板通过 `@ready` 把命令式 API 交给父级，`useDrawGuess.setBoard()` 保存；`captureCurrent()` 在切阶段前调用 `toDataURL()` / `hasInk()`。
+- 阶段推进、空白确认、时间到自动下一步等规则见 [games/draw-guess.md](games/draw-guess.md)。
 
-## 全局对象契约
+### 谁是卧底
 
-| 全局 | 形状 / API | 说明 |
-| --- | --- | --- |
-| `window.GAME_CONFIG` | `{ drawGuess: {...}, undercover: {...} }` | 整体直接赋值（非合并）；缺失 / 非法的段由各游戏 `getConfig()` 兜底 |
-| `window.Utils` | 见下 | 无状态纯函数集合（内部缓存 AudioContext 与 lightbox 事件绑定） |
-| `window.DrawingBoard` | `{ create(host, options), WIDTH, HEIGHT }` | 画板工厂 |
-| `window.DrawGuessGame` | `{ mount(root) → { destroy } }` | 你画我猜 |
-| `window.UndercoverGame` | `{ mount(root) → { destroy } }` | 谁是卧底 |
+```text
+UndercoverView.vue
+├─ useUndercover.ts         # 全部游戏状态 + 发牌逻辑
+├─ SetupScreen.vue          # 抽题 / 人数 / 名字 / 题目列表
+├─ RevealScreen.vue         # 发牌结果 / 一键翻开 / 横幅
+│  └─ UcCard.vue            # 单张卡片 + 按住查看
+```
 
-`window.Utils` 导出：`qs`、`qsa`、`formatTime`、`shuffle`、`escapeHtml`、`safeFileName`、`download`、`beep`、`vibrate`、`openLightbox`、`closeLightbox`。
+- `useUndercover` 持有 `count`、`names`、`topic`、`assignments`、`seen`、`peekIndex`、`allRevealed`。
+- 卡片按住/松手通过 `UcCard` 的 pointer 事件 + `window` 捕获阶段监听实现；`window.blur` 与 `visibilitychange` 由 composable 统一挂载 / 移除。
+- 详细约束见 [games/undercover.md](games/undercover.md)。
 
-其中 `beep(freq, durationMs, volume)` 用 WebAudio 现场合成（无音频文件），`vibrate(pattern)` 依赖 `navigator.vibrate`，两者在不可用环境下静默失败（不抛错）。
+## 生命周期与定时器约定
 
-## DOM 契约（由 index.html 提供，js/app.js 依赖）
+| 场景 | 机制 |
+| --- | --- |
+| 延时 / 周期任务 | `useTimers()` 的 `later()` / `every()`；`onScopeDispose` 时统一清理 |
+| 倒计时 | `useCountdown()`：基于 `deadline = performance.now() + 秒数 * 1000`，每 100ms 计算剩余时间；组件卸载自动停 |
+| 切走游戏 | RouterView 换组件 → 组件卸载 → `useTimers` / `useCountdown` 的 scope dispose 生效；无需手写 `destroy()` |
+| 画板 | 画板只活在一个阶段内；`PlayScreen` 卸载时 emit `board: null`，父级清空引用 |
 
-| 选择器 | 用途 | 缺失时的行为 |
-| --- | --- | --- |
-| `#nav` | 左侧游戏列表容器，`renderNav()` 重写其 `innerHTML` | `app.js` 抛错 |
-| `#view` | 右侧游戏挂载点（`mount(root)` 收到它） | `app.js` 抛错 |
-| `#pageTitle` / `#pageSubtitle` | 内容区标题 / 副标题 | 抛错 |
-| `#menuBtn` / `#backdrop` | 窄屏抽屉开关 / 遮罩 | 有 null 判断，安全跳过 |
-| `#lightbox` / `#lightboxImg` | 图片放大层（`Utils.openLightbox` 使用） | 安全返回，不放大 |
-| `body.nav-open` | 窄屏抽屉打开状态（纯 CSS 控制） | — |
+**不要**在组件里裸用 `setInterval` / `setTimeout` 而不登记；否则切游戏后回调仍可能执行。
 
-`tests/smoke.html` 复刻了同一套骨架选择器（`#nav`、`#view`、`#pageTitle`、`#pageSubtitle`、`#menuBtn`、`#backdrop`、`#lightbox`、`#lightboxImg`）。改 `index.html` 骨架时必须同步改测试页，否则冒烟测试失败。
+## 配置读取时机
 
-## 游戏注册表（js/app.js 的 `GAMES`）
+- `src/config/index.ts` 导出 `GAME_CONFIG`，被 `normalize.ts` 静态 import。
+- `getDrawGuessConfig()` / `getUndercoverConfig()` 在**每个游戏 View 的 setup 时调用一次**（也就是每次进入游戏时），归一化后再使用。
+- 由于 Vite 在构建期把配置打进 bundle，配置不是运行期可改的变量；dev 模式改文件会触发 HMR，生产环境需要重新构建。
+- 归一化函数的兜底与类型在 [`src/config/normalize.ts`](../src/config/normalize.ts)，文档只列语义与陷阱（见 [config.md](config.md)）。
 
-数组，每项字段：
+## 样式与 DOM 契约
 
-| 字段 | 类型 | 用途 |
-| --- | --- | --- |
-| `id` | string | 唯一 id，同时是 URL hash 值（`#/<id>`） |
-| `name` | string | 导航项名称、`document.title` 前缀 |
-| `icon` | string | 导航图标（emoji） |
-| `desc` | string | 导航项副标题 |
-| `title` | string | 内容区 `<h1>` 文本 |
-| `subtitle` | string | 内容区副标题文本 |
-| `mount` | `(host) => ({ destroy })` | 挂载函数，通常转发到 `window.XxxGame.mount` |
+- 组件通过 `ref` 与模板事件定位 DOM；`main.css` 的选择器全是通用类名（`.nav-item`、`.topic`、`.uc-card`…），组件目录与类名一一对应。
+- 两个游戏的屏幕组件沿用同一套类名，因此样式在游戏之间复用。
+- 全局状态类只有 `body.nav-open`，由 `App.vue` 维护，CSS 负责抽屉动画。
+- 交互中的展示态类：`.is-active`（导航 / 题目列表）、`.is-open` / `.is-spy`（卧底卡片）、`.is-empty` / `.rolling` / `.pop`（抽题槽）、`.is-shown` / `.is-hidden`（卧底题目槽）、`.is-locked`（画板）。
 
-## 启动与切换流程
+## 构建与部署
 
-1. **启动**：`js/app.js` 执行 → 从 `location.hash` 去掉 `#/` 得到初始 id，空则用 `GAMES[0].id` → `open(id)`。
-2. **`open(id)` 的执行顺序**（有依赖，勿调整）：
-   1. 上一个实例 `current.destroy()`，然后 `current = null`
-   2. `#view.innerHTML = ''`
-   3. 写 `#pageTitle`、`#pageSubtitle`、`document.title`
-   4. `current = game.mount(#view) || {}`
-   5. `renderNav(game.id)`：重建导航并给当前项加 `.is-active`
-   6. 同步 hash：`history.replaceState(null, '', '#/' + id)`，失败则退化为写 `location.hash`
-   - `id` 未知时回退到 `GAMES[0]`。
-3. **hashchange**：`location.hash` 去掉 `#/` 后非空则 `open(id)`。
-4. **窄屏抽屉**：`#menuBtn` 切换 `body.nav-open`；`#backdrop` 点击、按 `Esc`、点击任一导航项都会移除该类。
-
-## 生命周期与状态归属
-
-- 每个游戏的**全部状态都在 `mount()` 闭包内**；游戏之间不共享状态，也不挂到全局。
-- 组件实例挂在游戏状态里（你画我猜用 `state.board`）。
-- **配置读取时机**：`getConfig()` 只在每次 `mount()` 时执行一次。运行时改 `window.GAME_CONFIG` 后必须重新 mount（刷新，或切走再切回该游戏）才生效——冒烟测试正是用「改配置 + 重新点击导航项」验证这一点。
-- `destroy()` 的约定职责：清掉本实例注册的全部定时器、移除注册在 `window` / `document` 上的监听、清空自己写进 `host` 的 DOM。两个现有游戏都实现了。
-- 「再玩一局」（你画我猜）与「返回设置 / 换一题重发」（谁是卧底）只在同一实例内换屏，**不重新读取配置**。
+- `vite.config.ts` 设置 `base: './'`：产物可部署在域名根路径或任意子目录。
+- hash 路由不需要服务器做 history fallback；静态服务器直接返回 `index.html` 即可。
+- 背景图在 `src/assets/bg/`，由 Vite 处理并带哈希；卧底配图在 `public/images/undercover/`，按 URL 运行期加载。
+- **不能用 `file://` 直接打开构建产物**：模块脚本会被 CORS 拦截。用 `npm run preview` 或任意静态服务器（见 [README](../README.md)）。
 
 ## 已知取舍
 
-- hash 只标记当前游戏，用 `replaceState` 而非 push：浏览器后退不会在游戏之间切换。
-- 没有错误边界：任一脚本抛错（例如 `js/config.js` 语法错误）会导致 `js/app.js` 不执行，页面停在没有游戏的空壳状态。
+- **没有 SSR**：这是线下聚会用的单页工具，SEO / 首屏内容不是目标。
+- **没有 Pinia**：两个游戏的状态互不共享，composable 足够；引入全局 store 只会增加一层间接。
+- **配置是构建期常量**：换来类型检查与更简单的代码；代价是改配置后生产产物要重新构建。
+- **图片体积**：`public/images/undercover/` 目前约 24MB PNG，构建时会原样复制。手机局域网首次加载可能偏慢，转 WebP 是后续可做的优化，不影响当前架构。
+- **没有错误边界**：任一模块抛错会由 Vue 冒泡；`main.ts` 没有兜底 UI。纯静态工具站可接受。

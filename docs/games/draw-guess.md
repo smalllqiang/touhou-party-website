@@ -1,12 +1,19 @@
-# 你画我猜（js/games/draw-guess.js）
+# 你画我猜
 
-导出 `window.DrawGuessGame = { mount(root) }`；`mount()` 返回 `{ destroy }`。
-依赖：`window.Utils`、`window.DrawingBoard`、`window.GAME_CONFIG.drawGuess`。
+| 文件 | 职责 |
+| --- | --- |
+| [`DrawGuessView.vue`](../../src/games/draw-guess/DrawGuessView.vue) | 根组件：按 `screen` 切三个屏幕 |
+| [`useDrawGuess.ts`](../../src/games/draw-guess/useDrawGuess.ts) | 全部状态、计时、阶段推进、作品保存 |
+| [`SetupScreen.vue`](../../src/games/draw-guess/SetupScreen.vue) | 抽题 / 题目列表 / 选手名 / 设置卡片 |
+| [`PlayScreen.vue`](../../src/games/draw-guess/PlayScreen.vue) | 计时、侧栏参考、画板、时间到遮罩 |
+| [`ResultScreen.vue`](../../src/games/draw-guess/ResultScreen.vue) | 起始题目、作品列表、保存、再玩一局 |
+| [`DrawingBoard.vue`](../../src/components/DrawingBoard.vue) | 画板（见 [../drawing-board.md](../drawing-board.md)） |
+
 配置项见 [../config.md](../config.md)。
 
 ## 流程与状态机
 
-```
+```text
 setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase=A, round=1)
                         │
                   [完成画图] → play(phase=B, round=n)
@@ -18,126 +25,83 @@ setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase
 
 - 1 轮 = A 阶段（画图）+ B 阶段（猜词），共 `2 × rounds` 个阶段。
 - 任意 play 阶段可被「结束本局」中断直接进 result。
-- 状态机由 `state.screen`（`setup` / `play` / `result`）与 `state.phase`（`A` / `B`）共同表达。
+- `screen`（`setup` / `play` / `result`）与 `phase`（`A` / `B`）共同表达状态。
 
-## 状态字段（`mount()` 闭包内）
+## 状态（`useDrawGuess`）
 
 | 字段 | 含义 |
 | --- | --- |
-| `screen` | `setup` / `play` / `result` |
-| `pool` | 未抽的题目（洗牌后的副本）；空了才重新洗牌 |
-| `topic` | 本局起始题目（字符串） |
-| `spinId` | 抽题滚动动画的 `setInterval` 句柄；换题 / 手动指定 / 离开 setup 时清掉 |
-| `round` / `phase` | 当前轮次（1 基）与阶段 |
-| `artworks` | 已捕获作品数组，见下 |
+| `screen` / `phase` / `round` | 当前屏幕、阶段、轮次（1 基） |
+| `topic` | 本局起始题目；`null` 表示还没抽 |
+| `artworks` | 已捕获作品 `{ round, phase, player, image, blank }[]` |
 | `players` | `{ A, B }` 当前选手名 |
-| `totalRounds` | 来自配置 |
-| `board` | 当前画板实例；离开 play 阶段后置 `null` |
-| `intervalId` | 计时器（`setInterval`） |
-| `pending` | `later()` / `every()` 注册的定时器句柄数组，统一清理 |
-| `paused` / `locked` / `transitioning` | 见下文语义 |
-| `inputBlockedUntil` | 「下一阶段」按钮的防抖截止时间（`performance.now()` 基） |
-| `deadline` / `remaining` / `total` | 计时模型，单位分别为 `performance.now()` 时刻与秒 |
-| `lastTickSecond` | 最后 5 秒提示音的去重标记 |
-| `destroyed` | `destroy()` 置位；所有定时回调先检查它 |
+| `board` | `shallowRef<DrawingBoardApi \| null>`；离开 play 阶段后置 `null` |
+| `paused` / `remaining` / `total` | 来自 `useCountdown()` |
+| `locked` / `timeUpVisible` | 时间到后锁定画板、显示遮罩 |
+| `transitioning` | 阶段推进防重入 |
+| `inputBlockedUntil` | 「下一阶段」按钮防抖截止时间（`performance.now()` 基） |
+| `spinning` / `spinText` / `popKey` | 抽题动画与 pop 重播 |
 
-作品对象形状：`{ round, phase, player, image, blank }`，其中 `image` 是 PNG dataURL（`board.toDataURL()`），`blank = !board.hasInk()`。
+作品对象：`image` 是 PNG dataURL（`board.toDataURL()`），`blank = !board.hasInk()`。
 
-## 关键函数
+## 抽题与题目列表
 
-| 函数 | 职责 |
-| --- | --- |
-| `getConfig()` | 读取并兜底 `GAME_CONFIG.drawGuess`（每次 `mount()` 一次） |
-| `drawTopic()` | 从 `pool` 取题；池空则用「排除当前题后的全集」重新洗牌 |
-| `buildPicker()` | 只建一次题目列表（`#topicPickList`），每条 `[data-pick]` 绑 `pickTopic()` |
-| `paintPicker()` | 只切 `.topic-pick-item.is-active` 高亮，不重建列表（重建会顶回滚动位置） |
-| `pickTopic(i)` | 手动指定第 `i` 题：`cancelRoll()` → 写 `state.topic` → 从 `pool` 移除该题 → `showTopic(t, true)` → `paintSetup()` → 收起 `<details>` → 提示音 |
-| `showTopic(text, animate)` | 把文本写进 `#topicSlot`；`animate` 时强制重排再 `pop`，保证连续点选动画能重播 |
-| `cancelRoll()` | 清掉 `state.spinId`（抽题动画中途换题 / 指定 / 卸载时调用） |
-| `paintSetup()` | 统一刷新抽题区按钮禁用态（`#drawBtn` / `#redrawBtn` / `#confirmBtn`）+ 列表高亮 |
-| `renderSetup()` | 抽题界面（抽 / 重来 / 确定、题目列表、选手名输入、设置与玩法卡片） |
-| `roll()` | 抽题动画：`every(55ms)` 共 14 tick 随机显示题目池文本，落定后 `showTopic()` + `pop` 动画 + 提示音 + `paintPicker()` |
-| `startGame()` | 清定时器、清空作品、`round=1`、`phase=A`，进入 `renderPlay()` |
-| `renderPlay()` | 构建游戏界面、创建画板、绑定按钮、`startTimer()` |
-| `startTimer()` / `tick()` / `paintTimer()` | 计时模型（见下） |
-| `togglePause()` | 暂停 / 继续 |
-| `onTimeUp()` | 时间到：锁定、提示音、震动、显示遮罩、按配置自动推进 |
-| `requestNextPhase()` | 「下一阶段」入口：防抖 + 空白确认 + 推进 |
-| `captureCurrent()` | 把当前画板存成作品对象并 `state.board = null` |
-| `nextPhase()` | 真正的阶段推进（A→B / 换轮 / 进结果） |
-| `quitGame()` | 「结束本局」：确认后直接进结果 |
-| `renderResult()` | 结果页：起始题目 + 全部作品 + 保存 / 再玩一局 |
-| `fileNameFor(a)` | 保存文件名：`第{round}轮-{A\|B}{画图\|猜词}-{player}.png`，经 `Utils.safeFileName` 清洗 |
-| `destroy()` | 置 `destroyed`、清定时器、`board = null`、清空 `root` |
-
-## 手动指定题目（题目列表）
-
-抽题区下方有一个折叠的 `<details class="topic-picker" id="topicPicker">`，和谁是卧底**共用同一套 `.topic-picker*` 元件**（样式在 `css/style.css` 的「通用元件」章节，代码在两边各有一份 `buildPicker()` / `paintPicker()` / `pickTopic()`）。
-
-- 默认折叠；点标题栏展开，列出 `topics` 全部条目（`.topic-pick-item`，只列文字编号，不放图片）。
-- `pickTopic(i)`：点一条就直接把第 `i` 题当本题，不用先「抽」——写 `state.topic`、从 `state.pool` 里移除该题（避免接着点「重来」又抽到它）、`showTopic(t, true)` 重播 pop 动画、刷新按钮态，然后把 `<details>` 收起（防围观泄题），响一声 988Hz。
-- 列表只建一次，`paintPicker()` 只切 `.is-active` 高亮；随机抽题（`roll()`）落定后也调用 `paintPicker()`，所以高亮始终跟着 `state.topic` 走。
-- 点「重来」或「抽」会走原来的滚动动画，高亮随之移动。
-- 「再玩一局」回到 `renderSetup()` 时 `state.topic` 已清空，高亮自然消失。
-- 列表会把题池全部摊开，这是刻意设计（给主持人手动指定用）；它只出现在 setup 界面，`renderPlay()` 一替换 DOM 就没了。
+- `roll()`：从洗牌池取题 → `spinning = true` → 每 55ms 随机换一次显示文本，14 tick 后落定 → `popKey += 1`（模板用 `:key` 重挂载题目槽，重播 `.pop` 动画）+ 提示音。
+- 池空时用「排除当前题后的全集」重新洗牌；手动点选会把该题从池里移除。
+- 题目列表是共用组件 [`TopicPicker.vue`](../../src/components/TopicPicker.vue)：
+  - `<details>` 默认折叠，列出全部题目（只列文字编号）；
+  - 点一条直接把它当本题，并自动收起（防围观）；
+  - 高亮由 `activeTopicIndex` 计算，不重建列表，滚动位置不丢。
+- 抽题动画进行中手动点选，`pickTopic()` 先 `stopSpin()`，避免动画落定覆盖手选题。
 
 ## 计时模型
 
-- 基准是 `performance.now()`（降级 `Date.now()`），不用累加计数：`deadline = now() + total*1000`，`remaining = max(0, (deadline - now())/1000)`。
-- `setInterval(tick, 100)` 单独由 `state.intervalId` 管理（不进 `pending`）；其余延时 / 周期任务一律走 `later()` / `every()` 进 `pending`。
-- 最后 5 个整秒（`whole ∈ (0,5]` 且与 `lastTickSecond` 不同）各响一声 880Hz。
-- `remaining ≤ 10` 且未暂停时给 `#timer` 加 `warn` 类；暂停时加 `paused` 类。
-- 暂停：停止消耗（`tick()` 在 `paused` 时直接 return），继续时用 `state.remaining` 重算 `deadline`，并同步 `board.setPaused()`。
-- 时间到：`stopTimer()`、`locked = true`、`board.setLocked(true)`（画板锁定并显示「时间到」遮罩）、两声提示音 + 震动、显示 `#timeup` 遮罩，遮罩里写明该阶段是谁的时间结束。
-- `autoNextOnTimeout !== false` 时，遮罩里追加「约 1.6 秒后自动进入下一步…」并 `later(nextPhase, 1600)`；此时点遮罩上的「下一步」也能立刻推进（它会先 `clearPending()`）。
-- `autoNextOnTimeout === false` 时停在遮罩上，等主持人点「下一步」。
+由 [`useCountdown`](../../src/composables/useCountdown.ts) 实现：
 
-## 阶段推进语义
+- 基准是 `performance.now()`，`deadline = now() + 秒数 * 1000`，每 100ms 计算 `remaining`；不做「每次 tick 减 0.1 秒」的累减，标签页被节流也不会漂移。
+- 最后 5 个整秒各响一声；`remaining ≤ 10 && !paused` 时计时器加 `.warn`，暂停时加 `.paused`。
+- 暂停：`useCountdown.pause()` 冻结剩余时间；继续时用剩余时间重算 deadline。画板通过 `paused` prop 显示遮罩。
+- 时间到：`locked = true`、`board` 的 `locked` prop 生效、两声提示音 + 震动、显示 `.timeup`；`autoNextOnTimeout !== false` 时 1.6 秒后自动 `nextPhase()`。
+- 时间到后点「下一步」：`requestNextPhase()` 走 `locked` 分支，不做空白检查，直接推进。
+
+## 阶段推进
 
 - `requestNextPhase()`：
-  - `now() < inputBlockedUntil` 直接返回（`renderPlay()` 结束时设置 `now() + 450`，防双击误触）。
-  - `locked`（时间已到）时不做空白检查，直接 `nextPhase()`。
+  - `now() < inputBlockedUntil` 直接返回（进入阶段后 450ms 防双击）；
+  - `locked` 时不检查空白，直接 `nextPhase()`；
   - 否则画板 `hasInk()` 为 false 时弹 `confirm('画板还是空白的，确定要进入下一阶段吗？')`，取消则不推进。
-- `nextPhase()`：`transitioning` 标志防重入；先 `clearPending()` + `stopTimer()` + `captureCurrent()`，然后：
-  - `phase === 'A'` → 切 `B`，重新 `renderPlay()`；
-  - `phase === 'B'` 且 `round >= totalRounds` → `renderResult()`；
-  - 否则 `round += 1`、`phase = 'A'`、重新 `renderPlay()`。
-- `quitGame()`：`confirm('结束本局并查看已有作品？')`；**只有画板有笔迹时才 `captureCurrent()`**（与正常推进不同：正常推进会记录空白作品并打上「空白」标签）；然后置 `transitioning = true` 并 `renderResult()`。
+- `nextPhase()`：`transitioning` 防重入；清定时器、停计时、`captureCurrent()`，然后 A→B / 换轮 / 进结果。
+- `quitGame()`：确认后直接进结果；**只有画板有笔迹时才捕获**（正常推进会把空白作品也记下来并打「空白」标签）。
+- 每个阶段 `PlayScreen` 用 `:key="phase-round"` 重新挂载，保证进入新阶段是一块干净画板。
 
-## 界面元素与选择器（供改动 / 测试定位）
+## 结果与保存
 
-| 阶段 | 选择器 | 说明 |
+- 展示起始题目、轮数 / 选手 / 作品数摘要、作品列表（轮次、`A|B` 标签、选手名、序号、空白标记）。
+- 单张：`download(image, fileNameFor(a))`；文件名 `第{round}轮-{A|B}{画图|猜词}-{player}.png`，经 `safeFileName` 清洗。
+- 「保存全部作品」：按 `i * 350ms` 依次触发下载，过程中按钮禁用并显示「保存中…（若浏览器拦截，请允许多文件下载）」；最后一张完成后恢复并响一声。
+- 「再玩一局（重新抽题）」清空 `artworks` / `round` / `phase` / `topic` / 池，回到 setup；**不重新读取配置、不改选手名**。
+
+## 界面选择器（测试与样式定位）
+
+| 屏幕 | 选择器 | 说明 |
 | --- | --- | --- |
-| setup | `#topicSlot` `#drawBtn` `#redrawBtn` `#confirmBtn` | 抽题区；`is-empty` / `rolling` / `pop` 是状态类 |
-| setup | `#topicPicker` `#topicPickList` `[data-pick="<i>"]` `.topic-pick-item` | 折叠的题目列表（与谁是卧底共用）；点一条直接指定本题，`.is-active` 是当前题高亮 |
+| setup | `.setup`、`.topic` | 题目槽；`is-empty` / `rolling` / `pop` 是状态类 |
+| setup | `.topic-actions .btn` | 抽 / 重来 / 确定；禁用态由 `topic` 与配置量决定 |
+| setup | `.topic-picker`、`.topic-pick-item`、`.is-active` | 共用题目列表 |
 | setup | `#playerA` `#playerB` | 选手名输入（`maxlength=12`） |
-| play | `#timer` `.timer-value` `.timer-bar i` | 倒计时数字与进度条（`i` 的 `width` 是比例） |
-| play | `#boardHost` | 画板挂载点（`DrawingBoard.create` 的 host） |
-| play | `#pauseBtn` `#quitBtn` `#nextBtn` | 按钮文案由 `nextButtonLabel()` 决定 |
-| play | `#timeup` `#timeupSub` `#timeupBtn` | 时间到遮罩（`hidden` 切换） |
-| play | `[data-zoom]` | 参考图 `<img>`，点击 → `Utils.openLightbox(src)` |
-| play | `.ref-img` / `.placeholder` | 参考作品有图 / 空白的两种渲染 |
-| result | `#saveAllBtn` `#againBtn` | 无作品时 `#saveAllBtn` 为 `disabled` |
-| result | `[data-save="<i>"]` | 单张保存按钮，`i` 是 `artworks` 下标 |
-| result | `.artwork-card` / `.blank-hint` | 作品卡；无图时渲染「没有留下作品」 |
-
-## 保存作品
-
-- 逐张：`Utils.download(a.image, fileNameFor(a))`。
-- 「保存全部作品」：按 `i * 350ms` 依次触发下载，同时把按钮文案改成「保存中…（若浏览器拦截，请允许多文件下载）」，最后一张完成后恢复原文案并响一声。按钮在过程中 `disabled = true`，防重复点击。
-- 浏览器可能拦截连续多文件下载，这是已知行为，不做规避。
-
-## 结果页与「再玩一局」
-
-- 结果页展示：本局起始题目 `state.topic`、轮数 / 选手 / 作品数摘要、作品列表（按 `artworks` 顺序，带轮次、`A|B` 标签、选手名、序号、空白标记）。
-- 「再玩一局（重新抽题）」清空 `artworks`、`round`、`phase`、`topic`、`pool` 后回到 `renderSetup()`；**不重新读取配置、不改选手名**。
+| play | `.play-meta`、`.tag` | 轮次 / 阶段 / 选手 |
+| play | `.timer`、`.timer-value`、`.timer-bar i` | 倒计时与进度条（`i.style.width` 是比例） |
+| play | `#boardHost` | 画板挂载点 |
+| play | `.play-actions .btn` | 暂停 / 结束本局 / 下一阶段 |
+| play | `.timeup`、`.timeup .sub` | 时间到遮罩 |
+| play | `.ref-img` / `.placeholder` | 参考作品有图 / 空白 |
+| result | `.result-topic`、`.artwork-card`、`.blank-hint` | 结果摘要与作品卡 |
+| result | `.artwork-card .btn` | 单张保存；「保存全部」在 `.result-actions` |
 
 ## 陷阱与已知行为
 
-- `renderSetup()` 会把 `state.board` 置 `null`；`state.board` 只在 play 阶段有效。
-- `roll()` 会先消耗题目（`drawTopic()`）再滚动；滚动过程中可能一闪而过地显示最终题目，这是动画的副作用，不影响正确性（题目对 A 不是秘密）。
-- 抽题动画进行中从题目列表点选时，`pickTopic()` 会先 `cancelRoll()`；否则动画落定会用 `finalTopic` 覆盖刚手动选的题。手动指定还会把该题从 `state.pool` 移除。
-- 题目列表的类名是**通用**的 `.topic-picker*` / `.topic-pick-*`（不带 `dg-` / `uc-` 前缀），你画我猜与谁是卧底共用；改结构或样式时两边都要照顾到。
-- `inputBlockedUntil` 只在 `renderPlay()` 里设置，`renderResult()` 里没有；在结果页连点不会误触。
-- `board.hasInk()` 在「清空后撤销」时会返回 `false` 但画面有内容，这是画板组件的已知行为，见 [../drawing-board.md](../drawing-board.md)。
-- `destroy()` 后再触发的定时回调都会因 `destroyed` 检查而失效。
+- `board` 只在 play 阶段有效；`PlayScreen` 卸载会 emit `board: null`。不要在 setup / result 调画板 API。
+- 抽题动画会先消耗题目再滚动；滚动中可能一闪而过地显示最终题目。对 A 不是秘密，可接受。
+- `inputBlockedUntil` 只在进入阶段时设置，结果页没有。
+- `board.hasInk()` 在「清空后撤销」时会返回 `false` 但画面有内容，见 [../drawing-board.md](../drawing-board.md)。
+- `saveAll` 的定时器登记在 `useTimers` 里；离开结果页会自动清理，不会继续触发下载。

@@ -1,74 +1,70 @@
-# 测试（tests/smoke.html）
+# 测试
 
-浏览器内自跑的冒烟测试，**没有测试框架、没有构建**。它复刻了 `index.html` 的骨架 DOM，加载同一批脚本（路径前缀 `../`），用 `await wait(ms)` 驱动流程，用合成 `PointerEvent` 模拟鼠标 / 手指操作。
+两层：**Vitest** 测逻辑与 composable，**Playwright** 在真实 Chromium 里跑关键流程。
 
-## 输出格式
-
-结果全部写进 `<pre id="results">`：
-
-```
-PASS | <断言名> | <可选 detail>
-FAIL | <断言名> | <可选 detail>
-...
-=== TOTAL <n> / FAILED <m> ===
-```
-
-- 每行由 `check(name, ok, detail)` 产生，`FAIL` 时 `failed++`。
-- `TOTAL` 的数字是 `out` 的条目数，即**实际执行到的 `check()` 次数**，不是文件里的调用点数量：文件中有 97 处 `check(` 调用点，其中「运行期异常」那处只在抛错时执行、有一处在「走完整局」的循环里每个 B 阶段执行一次。所以正常跑完 `TOTAL = 97 - 2 + rounds`（`rounds` 从 `window.GAME_CONFIG.drawGuess.rounds` 读，即 `js/config.js` 当前的值）：`rounds: 2` → **97**，`rounds: 3` → **98**。
-- 你画我猜的轮数相关断言（阶段数 / 作品数 / `第 n / N 轮`）都按 config 的 `rounds` 现算，改 `rounds` 只会改变 `TOTAL`，不会失败。
-- 断言中途抛错会被 `catch` 捕获，记成一条 `FAIL | 运行期异常 | …`。
-
-## 运行方式
+## 命令
 
 ```bash
-chromium --headless=new --no-sandbox --disable-gpu --user-data-dir=/tmp/cp \
-  --virtual-time-budget=60000 --dump-dom "file://$PWD/tests/smoke.html" \
-  | sed -n '/<pre id="results">/,/<\/pre>/p' \
-  | grep -o 'PASS | [^<]*\|FAIL | [^<]*\|=== TOTAL [^<]*'
+npm test            # 单测，跑一次
+npm run test:watch  # 单测，监听
+npm run test:e2e    # 端到端（会自动启动 / 复用 dev server）
+npm run build       # vue-tsc 类型检查 + 构建，必跑
 ```
 
-- `sed` 只取 `<pre id="results">` 区块：`--dump-dom` 输出里也包含测试脚本源码，直接用裸 `grep 'PASS\|=== TOTAL'` 会把这些源码行一起匹配出来。
-- 也可以直接用浏览器打开 `tests/smoke.html` 看页面输出，或起静态服务器访问同一路径（`file://` 与 `http://` 都能跑，测试不依赖网络）。
+判定标准：三条命令全部成功。
 
-判定标准：**`FAILED 0`**，且 `TOTAL` 符合上面的公式。新增断言后 `TOTAL` 会变，不必回改本文件里的数字（公式里的「97 处调用点」要跟着改）。
+## 单元测试（Vitest + jsdom）
 
-## 依赖与前置条件
+配置在 [`vitest.config.ts`](../vitest.config.ts)，用例在 `tests/unit/`：
 
-- 测试页在 `load` 后 100ms 启动（依赖 `window.onload`）。
-- 必须能提供 `PointerEvent`、`setPointerCapture`、`Canvas.toDataURL`。用合成事件时 `setPointerCapture` 可能抛错，组件与游戏代码已用 `try/catch` 容忍（`tests/smoke.html` 依赖这一点）。
-- 测试把 `window.confirm` 覆盖为恒 `true`，因此「空白画板」「结束本局」等确认框不会阻塞。
-- 测试会**改动 `window.GAME_CONFIG.drawGuess.timer`**，然后通过重新点击导航项触发重新 `mount`，以验证「配置在 mount 时读取」。这是刻意设计，不是副作用。
-- 断言 `$$('#nav .nav-item').length === 2`：**新增小游戏必须同步更新这条断言**，否则冒烟测试失败。
+| 文件 | 覆盖点 |
+| --- | --- |
+| `utils.spec.ts` | `formatTime` 补零 / 取整、`shuffle` 不改原数组、`safeFileName` 清洗 |
+| `config.spec.ts` | 两个游戏的配置兜底、人数 / 画笔 clamp、题目三种写法、图片路径拼接、缺词的题目被丢弃 |
+| `countdown.spec.ts` | 按时间差递减（模拟标签页节流）、暂停 / 继续、最后 5 秒回调、`onExpire` 只触发一次 |
+| `draw-guess.spec.ts` | 抽题 → A/B → 换轮 → 结果；空白确认；时间到自动推进；再玩一局清空但保留选手名 |
+| `undercover.spec.ts` | 默认名字 / 人数 clamp、发牌恰好 1 名卧底、按住 / 松开、一键翻开与返回设置、改名后重发 |
 
-## 覆盖范围
+composable 测试的注意事项：
+
+- `useDrawGuess` / `useUndercover` 必须在组件 `setup` 里调用（用 `@vue/test-utils` 的 `mount` 包一层），否则 `onScopeDispose` / `onMounted` 没有作用域。
+- 计时相关用 `vi.useFakeTimers` + `vi.spyOn(performance, 'now')` 控制时间；`draw-guess.spec.ts` 里有现成写法。
+- 画板在 jsdom 里没有真实 canvas，测试注入 `DrawingBoardApi` 假对象（见 `fakeBoard()`），不测像素。
+
+## 端到端（Playwright）
+
+配置在 [`playwright.config.ts`](../playwright.config.ts)，用例在 `tests/e2e/smoke.spec.ts`。
+
+- 默认优先使用系统 Chromium：`/usr/bin/chromium`；也可用 `CHROMIUM_PATH` 指定。
+- 如果机器上没有系统 Chromium，先 `npx playwright install chromium`，再让 `CHROMIUM_PATH` 留空（Playwright 回退到自带浏览器）。
+- `webServer` 会复用已在 5173 端口运行的 dev server；直接 `npm run test:e2e` 即可。
+- 每个用例都会收集 `pageerror` / console error，结束时断言为空——新增功能不要引入浏览器报错。
+- 时间相关用例用 `page.clock.install()` + `fastForward()` 快进，不需要真的等 150 秒。
+
+覆盖范围：
 
 | 区块 | 覆盖点 |
 | --- | --- |
-| 导航 / 启动 | 导航项数量、高亮、标题、初始 hash 决定的首屏 |
-| 你画我猜 · 抽题 | 初始按钮禁用、`rolling` 动画、抽到 config 内的题目、重来、**题目列表折叠 / 展开 / 点一条直接指定 / 自动收起 / 高亮跟着抽题走 / 再玩一局后清空** |
-| 你画我猜 · 流程 | A 阶段看题、画板工具栏齐备、倒计时启动、留下笔迹、B 阶段不给题目只给参考画、`rounds × 2` 个阶段、第 2 轮 A 参考上一轮猜词 |
-| 你画我猜 · 结果 | `rounds × 2` 张作品、起始题目、单张保存按钮、PNG dataURL、保存全部、再玩一局后清空（含题目列表高亮） |
-| 你画我猜 · 计时 | 改配置后重新 mount 生效、时间到弹提示、自动进入 B 阶段、B 用 `timer.b` |
-| 谁是卧底 · 抽题 | 默认 4 人、按钮初始禁用、**抽题不滚动且不闪过任何题目词（不泄题）**、题目默认藏起、查看本题、换一题不滚动、题目列表折叠 / 展开 / 只列文字 / 点击指定 / 自动收起 / 高亮 |
-| 谁是卧底 · 人数与名字 | 加号改人数、名字输入框数量跟随、发牌后改名生效 |
-| 谁是卧底 · 看牌 | 卡片默认盖着、按住翻开、只翻一张、**`pointerleave` / `pointerout` 不会误关卡片（回归）**、松手盖回、已查看标记、触屏长按同样有效 |
-| 谁是卧底 · 发牌正确性 | 所有卡片只有两种词、恰好 1 个卧底、发的是手动指定的那组 |
-| 谁是卧底 · 公布 | 一键翻开全部、只有 1 张卧底、每张标身份、横幅公布卧底、再点全部扣上 |
-| 谁是卧底 · 导航 | 换一题重发、返回设置后人数与题目保留 |
+| 路由 / 外壳 | 直接访问 `#/undercover`、未知 hash 回退、标题与导航高亮同步 |
+| 你画我猜 | 抽题动画落定、题目列表折叠 / 点选 / 收起 / 高亮、开始游戏、每个阶段画一笔并推进、结果页作品数与题目、单张下载、lightbox 打开与 Esc、再玩一局清空 |
+| 你画我猜 · 边界 | 空白画板弹确认、暂停冻住倒计时、时间到遮罩与 1.6 秒自动进入 B |
+| 谁是卧底 | 人数步进与名字数量、抽题默认隐藏、查看本题、发牌 5 张、按住翻开 / 松手盖回 / 已查看标记、一键翻开（1 张卧底 + 横幅）、扣上、返回设置 |
+| 窄屏 | 菜单按钮、`body.nav-open`、点遮罩关闭 |
 
 ## 手工回归清单（自动化测不到的部分）
 
 改完代码后按需人工过一遍：
 
-1. **窄屏抽屉**：窗口宽度 ≤ 820px，点 `☰` 打开、点遮罩 / `Esc` / 点导航项关闭。
-2. **真实触摸按住**：真机或浏览器触摸模拟，按住卡片按钮不松手，确认不会被翻转动画误关（对应上面那条回归断言的实机版本）。
-3. **多文件下载**：你画我猜结果页点「保存全部作品」，确认浏览器未拦截或提示文案正确。
-4. **配图缺失降级**：把 `imageDir` 指到空目录，确认卡片显示占位而不是破图图标，且词与流程正常。
-5. **无网络环境**：断网后用 `file://` 打开，确认功能不依赖任何网络请求。
-6. **背景图**：确认 `.content-bg` 在宽屏（裁上下）与窄屏（几乎不裁）下观感正常。
+1. **真实触摸按住**：真机或浏览器触摸模拟，按住卡片按钮不松手，确认不会被翻转动画误关（对应「不能监听 pointerleave / pointerout」的约束）。
+2. **多文件下载**：结果页点「保存全部作品」，确认浏览器未拦截或提示文案正确。
+3. **配图缺失降级**：把一张卧底图临时改名，确认卡片显示占位而不是破图图标，且词与流程正常。
+4. **局域网**：`npm run dev -- --host` 或 `npm run build` + 静态服务器，用手机访问同一局域网地址；确认背景图、卧底配图、画板触摸都正常。
+5. **无网络环境**：断网后通过本地静态服务器打开构建产物，确认功能不依赖网络。
+6. **背景图**：宽屏（裁上下）与窄屏（几乎不裁）下观感正常。
 
 ## 陷阱
 
-- `--dump-dom` 输出的是 HTML 快照，`<pre>` 内的文本可能带转义；用上面的 `grep -o` 模式提取即可。
-- `--virtual-time-budget` 太小时测试会被截断（结果停在 `RUNNING`），表现为 `TOTAL` 明显偏小。此时加大预算或改用真实浏览器。
-- 测试与实现共用同一批全局对象（`window.GAME_CONFIG` 等）；在同一浏览器会话里连续跑两次需要刷新页面，因为测试会改配置。
+- `npm run test:e2e` 依赖 5173 端口的 dev server；端口被占用时 `reuseExistingServer` 会直接用现有服务，注意它是不是当前代码。
+- Playwright 的 `clock.install()` 会接管页面里的 `setTimeout` / `performance.now`；不要在同一个用例里同时依赖真实等待和 fake clock。
+- 画板笔迹用 `page.mouse` 模拟；如果改了画板 CSS 尺寸，`stroke()` 里的比例坐标仍然有效，但断言 `toDataURL` 长度时要留余量。
+- 测试会断言「导航项数量」与配置题目数；新增游戏 / 改配置后同步更新 `tests/e2e/smoke.spec.ts`。

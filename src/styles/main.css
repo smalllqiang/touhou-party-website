@@ -84,9 +84,9 @@ ol, ul { padding: 0; list-style: none; }
   z-index: 0;
   pointer-events: none;
   background-color: var(--sky-deep);
-  background-image: url("../images/bg/night-sky.jpg");
+  background-image: url("../assets/bg/night-sky.jpg");
   background-image: image-set(
-    url("../images/bg/night-sky.webp") type("image/webp")
+    url("../assets/bg/night-sky.webp") type("image/webp")
   );
   background-size: cover;
   background-position: center bottom;

@@ -1,82 +1,96 @@
-# 画板组件（js/drawing-board.js）
+# 画板组件
 
-导出 `window.DrawingBoard = { create(host, options), WIDTH: 1024, HEIGHT: 576 }`。
-无状态全局，每次 `create()` 返回一个独立的画板实例，所有状态在该实例闭包内。
+- 组件：[`src/components/DrawingBoard.vue`](../src/components/DrawingBoard.vue)
+- 常量与 API 类型：[`src/lib/drawing-board.ts`](../src/lib/drawing-board.ts)
+- 样式：`.board*`（见 [styles.md](styles.md)）
 
-## API
+画布保持**命令式**：canvas 的笔画状态（路径、历史、`hasInk`）不放进 Vue 响应式；Vue 只负责工具栏、暂停 / 锁定遮罩这些低频 UI。
 
-```js
-var board = window.DrawingBoard.create(hostElement, {
-  colors: ['#000000', '#ffffff'],          // 调色盘；空/缺失 → ['#000000']
-  brush: { min: 1, max: 48, defaultSize: 6 } // 每项缺失时用各自兜底
-});
+## Props
+
+| prop | 类型 | 说明 |
+| --- | --- | --- |
+| `colors` | `string[]` | 调色盘；空数组时组件内回退 `#000000` 作为当前色（配置层已兜底） |
+| `brush` | `{ min, max, defaultSize }` | 粗细滑杆范围与默认值（配置层已归一化） |
+| `paused` | `boolean` | 暂停：禁止绘制 + 显示「已暂停」遮罩 |
+| `locked` | `boolean` | 时间到：禁止绘制 + 显示「时间到」遮罩 |
+| `disabled` | `boolean` | 外部强制禁用（优先于上面两个） |
+
+`enabled = !disabled && !locked && !paused`；禁用时中断当前笔画、给根节点加 `.is-locked`。
+
+## Emits
+
+| 事件 | 载荷 | 时机 |
+| --- | --- | --- |
+| `ready` | `DrawingBoardApi` | 组件挂载且拿到 2D context 后；父级用它保存命令式 API |
+
+## Expose
+
+```ts
+interface DrawingBoardApi {
+  toDataURL(): string          // 导出 PNG dataURL
+  hasInk(): boolean            // 是否画过东西（见陷阱）
+  clear(): void                // 清空（先压历史，可撤销）
+  undo(): void                 // 回退一步
+  setColor(css: string): void  // 选颜色，同时切回画笔
+  setSize(n: number): void     // 设置粗细，clamp 到 [min, max]
+  setTool(tool: 'brush' | 'eraser'): void
+}
 ```
 
-`create(host, options)` 会**重写 `host.innerHTML`**，并返回：
+父级用法（`PlayScreen.vue`）：
 
-| 成员 | 类型 | 说明 |
-| --- | --- | --- |
-| `el` | `HTMLElement` | 根节点 `.board` |
-| `canvas` | `HTMLCanvasElement` | 固定内部分辨率 `1024 × 576` |
-| `wrapper` | `HTMLElement` | `.board-canvas-wrap`（承载锁定 / 暂停遮罩） |
-| `toDataURL()` | `() => string` | 导出 PNG dataURL |
-| `hasInk()` | `() => boolean` | 是否画过东西（**见陷阱**） |
-| `clear()` | `() => void` | 清空（先压入历史，可撤销） |
-| `undo()` | `() => void` | 回退一步 |
-| `setEnabled(bool)` | | 外部强制禁用（优先于下面两个） |
-| `setPaused(bool)` | | 暂停：禁用绘制 + 显示「已暂停」遮罩 |
-| `setLocked(bool)` | | 锁定（时间到）：禁用绘制 + 显示「时间到」遮罩 |
-| `setColor(css)` | | 选颜色，同时把工具切回画笔 |
-| `setSize(n)` | | 设置粗细，clamp 到 `[min, max]` |
-| `setTool('brush'\|'eraser')` | | 切换工具 |
-| `pushHistory()` | | 手动压入快照（一般不用） |
-| `destroy()` | | `host.innerHTML = ''`（不解除任何全局监听——组件没注册全局监听） |
+```vue
+<DrawingBoard
+  :colors="config.colors"
+  :brush="config.brush"
+  :paused="paused"
+  :locked="locked"
+  @ready="emit('board', $event)"
+/>
+```
 
-`options` 兜底：`colors` 空或缺失 → `['#000000']`；`brush.min` → `1`、`brush.max` → `48`、`brush.defaultSize` → `6`（`defaultSize` 会被 clamp 到 `[min, max]`）。
+`useDrawGuess` 在 `setBoard(api)` 后，用 `api.toDataURL()` / `api.hasInk()` 捕获作品；切阶段时 `PlayScreen` 卸载并 emit `board: null`。
 
-## DOM 结构（选择器稳定，测试与样式依赖）
+## DOM 结构（样式与测试依赖）
 
 ```html
-<div class="board">                              <!-- 锁定时加 .is-locked -->
+<div class="board" :class="{ 'is-locked': !enabled }">
   <div class="board-toolbar">
     <button class="swatch[ is-active]" data-color="#000000">
     <input type="range" min max value step="1">
-    <span class="size-preview"><i></i></span>     <!-- 橡皮模式加 .is-eraser -->
+    <span class="size-preview[ is-eraser]"><i></i></span>
     <button class="tool-btn[ is-active]" data-tool="brush|eraser">
     <button class="tool-btn" data-action="undo">
     <button class="tool-btn danger" data-action="clear">
   </div>
   <div class="board-canvas-wrap">
     <canvas width="1024" height="576"></canvas>
-    <div class="board-paused" hidden>已暂停<span>点击「继续」恢复计时</span></div>
-    <div class="board-lock" hidden>时间到</div>
+    <div class="board-paused" :hidden="!paused">已暂停<span>点击「继续」恢复计时</span></div>
+    <div class="board-lock" :hidden="!locked">时间到</div>
   </div>
 </div>
 ```
-
-事件采用**委托**：工具栏的点击统一挂在 `host` 上，按 `.swatch` / `[data-tool]` / `[data-action]` 分派；滑杆用 `input` 事件。
 
 ## 内部实现要点
 
 | 主题 | 实现 |
 | --- | --- |
-| 坐标系 | canvas 内部固定 `1024 × 576`；`pointerPos(e)` 用 `getBoundingClientRect()` 把 client 坐标线性映射回内部坐标，因此 CSS 任意缩放都不影响笔迹位置 |
-| 背景 | `paintBackground()` 填充白色（`setTransform(1,0,0,1,0,0)` 后 `fillRect`），所以「擦除 = 画白色」 |
-| 笔迹平滑 | 起点画圆点，移动时用 `quadraticCurveTo` 以「上一点到中点的曲线」连接；抬笔时补一段直线到最后的点 |
-| 高频采样 | `pointermove` 里优先使用 `e.getCoalescedEvents()`，逐点绘制，避免快速划动断线 |
-| 手写笔压力 | `widthFor(e)`：`pen` 且 `pressure > 0` 时 `base * (0.45 + pressure * 0.9)`；其它指针类型用固定粗细 |
-| 橡皮擦 | 不是 `destination-out`，而是把颜色换成 `#ffffff` 且粗细 `× 2.2`；`lineCap` / `lineJoin` 均为 `round` |
-| 撤销 | 历史是 dataURL 快照数组（`canvas.toDataURL('image/png')`），上限 `HISTORY_LIMIT = 12`，超出 `shift()` 丢最旧；`undo()` 弹出后用 `Image.onload` 重绘（先 `paintBackground()`） |
-| 指针捕获 | `pointerdown` 时 `setPointerCapture`，`pointerup` / `pointercancel` 释放；鼠标只响应左键（`button !== 0` 忽略） |
-| 禁用合成 | `syncEnabled()`：`enabled = !disabled && !locked && !paused`；禁用时中断当前笔画、给 `.board` 加 `.is-locked`、按需显示两个遮罩 |
-
-固定常量（模块内，未导出）：`WIDTH = 1024`、`HEIGHT = 576`、`HISTORY_LIMIT = 12`。
+| 坐标系 | canvas 内部固定 `1024 × 576`；`getBoundingClientRect()` 把 client 坐标线性映射回内部坐标，CSS 任意缩放不影响笔迹位置 |
+| 背景 | 填充白色（`setTransform(1,0,0,1,0,0)` 后 `fillRect`），所以「擦除 = 画白色」 |
+| 笔迹平滑 | 起点画圆点；移动时用 `quadraticCurveTo` 连接「上一点到中点」；抬笔补直线 |
+| 高频采样 | `pointermove` 优先用 `getCoalescedEvents()` 逐点绘制 |
+| 手写笔压力 | `pen` 且 `pressure > 0` 时 `base * (0.45 + pressure * 0.9)` |
+| 橡皮擦 | 颜色换成 `#ffffff` 且粗细 `× 2.2`；`lineCap` / `lineJoin` 为 `round` |
+| 撤销 | dataURL 快照数组，上限 `HISTORY_LIMIT = 12`；`undo()` 弹出后 `Image.onload` 重绘（先填白） |
+| 指针捕获 | `pointerdown` 时 `setPointerCapture`；`pointerup` / `pointercancel` 释放；鼠标只响应左键 |
+| 事件绑定 | canvas 事件在 `onMounted` 里 `addEventListener`；工具栏仍用模板 `@click` / `@input` |
 
 ## 陷阱与已知行为
 
-- **`hasInk()` 与撤销不一致**：`clear()` 会把 `inked` 置 `false`，但 `undo()` 只重绘、不修改 `inked`。因此「清空 → 撤销」后画面有内容而 `hasInk()` 仍返回 `false`。你画我猜用它判断「是否空白」，会在此场景下误判为空白（弹一次确认框），不影响功能。
-- `undo()` 的重绘是异步的（`Image.onload`）；紧接 `undo()` 调用 `toDataURL()` 可能拿到旧画面。
-- 历史快照是整张 PNG dataURL，**不是**矢量操作日志；连续大量 `pushHistory()`（每次按下都压一次）会占用内存（上限 12 张）。
-- `setColor()` 会把 `tool` 强制切回 `brush`（选了颜色就不再是橡皮）。
-- 橡皮用白色覆盖：如果画布背景将来改成非白色，橡皮需要同步改 `beginStroke` 里的 `strokeColor`。
-- 组件不注册任何 `window` / `document` 监听，因此 `destroy()` 只清 DOM。
+- **`hasInk()` 与撤销不一致**：`clear()` 会把 `inked` 置 `false`，`undo()` 只重绘、不修改它。因此「清空 → 撤销」后画面有内容而 `hasInk()` 仍为 `false`，你画我猜会误判为空白并弹一次确认框，不影响功能。
+- `undo()` 的重绘是异步的；紧接 `undo()` 调 `toDataURL()` 可能拿到旧画面。
+- 历史是整张 PNG dataURL，不是矢量操作日志；每次按下都压一张，上限 12 张。
+- 橡皮用白色覆盖：如果将来把画布背景改成非白色，`beginStroke` 里的 `strokeColor` 要同步改。
+- 组件不注册任何 `window` / `document` 监听，所以不需要在卸载时移除全局事件；Vue 卸载会带走 canvas 和模板监听。
+- 不要给 canvas 加 `v-bind` 的绘制数据；所有笔画状态留在组件闭包内，避免每次 `pointermove` 触发 Vue 更新。
