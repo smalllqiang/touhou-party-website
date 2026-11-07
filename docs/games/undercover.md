@@ -30,14 +30,17 @@ setup ──[开始发牌]──> reveal ──[换一题重发]──> reveal�
 | --- | --- |
 | `count` | 玩家人数，始终在 `[minPlayers, maxPlayers]` |
 | `names` | 玩家名数组；长度**不一定**等于 `count`（缩容保留多余项，再扩容不丢） |
-| `topic` | 当前题目（归一化后的 `{ normal, spy }`），跨屏幕保留 |
+| `topicIndex` | 当前题目在配置里的下标（`-1` = 未抽）；跨屏幕保留 |
+| `topic` | `topicIndex` 派生的 computed（归一化后的 `{ normal, spy }`），不是独立 ref |
 | `topicVisible` | 主持人是否点开「查看本题」；跨屏幕保留 |
 | `assignments` | `{ name, isSpy, word }[]`，长度 = `count` |
 | `spyIndex` | 卧底下标（`-1` 表示未发牌）；对外暴露为 `spy` computed |
 | `seen` | `boolean[]`，每张卡是否被按住看过 |
 | `allRevealed` | 「一键翻开」的永久翻开状态 |
 | `peekIndex` | 当前被按住查看的卡片下标，`-1` 表示没有 |
-| `pool` | 抽题池（洗牌副本），避免连续抽到同一组 |
+| `pool` | 抽题池（题目下标的洗牌副本），避免连续抽到同一组 |
+
+除 `peekIndex`（正在按住）外，本局状态会写进 `localStorage`，刷新后恢复；字段与校验规则见 [../persistence.md](../persistence.md)。
 
 ## 题目归一化
 
@@ -56,10 +59,10 @@ setup ──[开始发牌]──> reveal ──[换一题重发]──> reveal�
 
 ## 抽题
 
-- `drawTopic()`：池空时用「排除当前题后的全集」重新洗牌；从池尾 `pop()`。
+- `drawTopic()`：池空时用「排除当前题后的全集」重新洗牌；从池尾 `pop()` 出下标再写 `topicIndex`。
 - `roll()`（「抽题」/「换一题」）：**只做抽取，没有滚动动画**。
   - 约束：不要恢复滚动动画。滚动会掠过题目池里的其它词，等于泄题。抽到的题默认 `topicVisible = false`。
-- 手动指定：共用 [`TopicPicker.vue`](../../src/components/TopicPicker.vue)。`pickTopic(i)` 会写 `topic`、`topicVisible = false`、把该组从池里移除，并收起列表。
+- 手动指定：共用 [`TopicPicker.vue`](../../src/components/TopicPicker.vue)。`pickTopic(i)` 会写 `topicIndex = i`、`topicVisible = false`、把该下标从池里移除，并收起列表。
 - 「查看本题」：切换 `topicVisible`。false 时显示「✅ 已抽到题目」；true 时显示普通词（× 普通玩家人数）与卧底词（×1）。
 
 ## 发牌（`deal()`）
@@ -93,6 +96,14 @@ setup ──[开始发牌]──> reveal ──[换一题重发]──> reveal�
 - 翻开时每张卡显示身份文本（`.uc-card-role`），`.uc-banner` 显示「本局卧底是 <名字>」+ 卧底词与普通词；扣上时隐藏。
 - `allRevealed = true` 时按住查看失效。
 
+## 持久化与恢复
+
+- 状态键 `undercover:state`：`screen` / `count` / `names` / `topicIndex` / `topicVisible` / `spyIndex` / `seen` / `allRevealed` / `pool`。
+- 题目只存**下标**；恢复时用 `topicIndex` + `spyIndex` 从重新归一化的配置重建 `assignments`，不信任存储里的词，避免配置改动后词与身份对不上。
+- 发牌页缺少有效题目或卧底下标时，按坏数据处理，恢复到设置页重新抽题。
+- `peekIndex` 永不持久化：刷新后所有卡片都是扣上的；`seen` 与 `allRevealed` 保留。
+- 写入时机：相关 ref `watch` + `pagehide` / 标签页隐藏 / 卸载。完整机制见 [../persistence.md](../persistence.md)。
+
 ## 缺图行为
 
 | 情况 | 表现 |
@@ -120,8 +131,9 @@ setup ──[开始发牌]──> reveal ──[换一题重发]──> reveal�
 
 ## 陷阱与已知行为
 
-- `topicVisible` 与 `topic` 跨屏幕保留：从 reveal 点「返回设置」后，若之前点开过「查看本题」，题目仍以明文显示。
+- `topicVisible` 与 `topicIndex` 跨屏幕保留：从 reveal 点「返回设置」后，若之前点开过「查看本题」，题目仍以明文显示。
 - 「换一题重发」会重新抽题 + 发牌，但**不会**重置 `names`。
+- 刷新恢复时 `peekIndex` 归 `-1`，但 `seen` / `allRevealed` 保留：刷新不会让别人看到正在按住的词，也不会丢掉「已查看 / 已翻开」记录。
 - 卡片组件按 `i` 复用；`seen`、`failed` 等状态要么放在 composable（`seen`），要么监听输入变化重置（`failed`）。
 - 题目列表只切 `.is-active` 高亮，不重建 DOM；重建会把列表滚动位置顶回去。
 - 不要在 `input` 事件里重建名字输入框，否则会打断输入。

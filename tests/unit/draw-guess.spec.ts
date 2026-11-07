@@ -31,6 +31,7 @@ function fakeBoard(hasInk = true): DrawingBoardApi {
   return {
     toDataURL: () => `data:image/png;base64,${hasInk ? 'INK' : 'BLANK'}`,
     hasInk: () => hasInk,
+    restoreImage: () => {},
     clear: () => {},
     undo: () => {},
     setColor: () => {},
@@ -171,5 +172,70 @@ describe('useDrawGuess', () => {
     expect(game.players.value).toEqual({ A: '小明', B: '小红' })
 
     wrapper.unmount()
+  })
+
+  it('刷新恢复：进行中的阶段、选手名与画板快照都能接上', () => {
+    const first = setupGame()
+    first.game.pickTopic(1)
+    first.game.players.value.A = '小明'
+    first.game.startGame()
+    expect(first.game.screen.value).toBe('play')
+
+    first.game.setBoard(fakeBoard(true))
+    first.game.onBoardChange({ image: 'data:image/png;base64,INK', inked: true })
+    first.wrapper.unmount()
+
+    const second = setupGame()
+    expect(second.game.screen.value).toBe('play')
+    expect(second.game.phase.value).toBe('A')
+    expect(second.game.topic.value).toBe(first.game.topic.value)
+    expect(second.game.players.value.A).toBe('小明')
+
+    const restore = vi.fn()
+    second.game.setBoard({ ...fakeBoard(true), restoreImage: restore })
+    expect(restore).toHaveBeenCalledWith('data:image/png;base64,INK', true)
+    expect(second.game.artworks.value).toEqual([])
+
+    second.wrapper.unmount()
+  })
+
+  it('刷新恢复：已推进的阶段和作品还在', () => {
+    const first = setupGame()
+    first.game.pickTopic(0)
+    first.game.startGame()
+    first.game.setBoard(fakeBoard())
+    clockNow = 1_000
+    first.game.requestNextPhase()
+    expect(first.game.phase.value).toBe('B')
+    expect(first.game.artworks.value).toHaveLength(1)
+    first.wrapper.unmount()
+
+    const second = setupGame()
+    expect(second.game.screen.value).toBe('play')
+    expect(second.game.phase.value).toBe('B')
+    expect(second.game.round.value).toBe(1)
+    expect(second.game.artworks.value).toHaveLength(1)
+    expect(second.game.artworks.value[0].image).toContain('data:image/png')
+
+    second.wrapper.unmount()
+  })
+
+  it('刷新恢复：暂停中的倒计时保持暂停与剩余时间', () => {
+    const first = setupGame()
+    first.game.pickTopic(0)
+    first.game.startGame()
+
+    clockNow = 10_000
+    vi.advanceTimersByTime(100)
+    first.game.togglePause()
+    const frozen = first.game.remaining.value
+    expect(first.game.paused.value).toBe(true)
+    first.wrapper.unmount()
+
+    const second = setupGame()
+    expect(second.game.paused.value).toBe(true)
+    expect(second.game.remaining.value).toBeCloseTo(frozen, 1)
+
+    second.wrapper.unmount()
   })
 })

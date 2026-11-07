@@ -5,6 +5,7 @@ import {
   BOARD_WIDTH,
   type BoardTool,
   type DrawingBoardApi,
+  type DrawingSnapshot,
 } from '@/lib/drawing-board'
 
 const props = withDefaults(
@@ -20,6 +21,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   ready: [api: DrawingBoardApi]
+  /** 一笔画完 / 撤销 / 清空之后上报整张快照，父级用来持久化本阶段进度。 */
+  change: [snapshot: DrawingSnapshot]
 }>()
 
 const HISTORY_LIMIT = 12
@@ -38,7 +41,8 @@ let strokeColor = '#000000'
 let lineWidth = size.value
 let lastPoint: { x: number; y: number } | null = null
 let lastMid: { x: number; y: number } | null = null
-const undoStack: string[] = []
+/** 撤销栈保存「整张图 + 当时是否算有笔迹」，否则「清空后撤销」会让 hasInk 永远为 false。 */
+const undoStack: DrawingSnapshot[] = []
 
 const enabled = computed(() => !props.disabled && !props.locked && !props.paused)
 
@@ -89,11 +93,18 @@ function pushHistory(): void {
   try {
     const data = canvasEl.value?.toDataURL('image/png')
     if (!data) return
-    undoStack.push(data)
+    undoStack.push({ image: data, inked })
     if (undoStack.length > HISTORY_LIMIT) undoStack.shift()
   } catch {
     /* ignore */
   }
+}
+
+/* ---------- 快照上报 ---------- */
+function emitChange(): void {
+  const data = toDataURL()
+  if (!data) return
+  emit('change', { image: data, inked })
 }
 
 /* ---------- 指针绘制 ---------- */
@@ -188,6 +199,7 @@ function onPointerUp(e: PointerEvent): void {
   } catch {
     /* ignore */
   }
+  emitChange()
 }
 
 function preventDefault(e: Event): void {
@@ -219,17 +231,43 @@ function clear(): void {
   paintBackground()
   resetContext()
   inked = false
+  emitChange()
 }
 
 function undo(): void {
-  const data = undoStack.pop()
-  if (!data) return
+  const entry = undoStack.pop()
+  if (!entry) return
   const img = new Image()
   img.onload = () => {
     paintBackground()
     ctx?.drawImage(img, 0, 0)
+    inked = entry.inked
+    emitChange()
   }
-  img.src = data
+  img.src = entry.image
+}
+
+/**
+ * 用快照恢复画布（刷新后继续作画）。
+ * 先同步写回 inked：dataURL 解码是异步的，如果玩家在解码完成前点「下一阶段」，
+ * hasInk() 不能误报空白。恢复后清空撤销栈（刷新前的历史没有保存）。
+ */
+function restoreImage(image: string, restoredInked = true): void {
+  if (!image.startsWith('data:image/')) return
+  inked = restoredInked
+  undoStack.length = 0
+  const img = new Image()
+  img.onload = () => {
+    paintBackground()
+    resetContext()
+    ctx?.drawImage(img, 0, 0)
+  }
+  img.onerror = () => {
+    /* 损坏的快照当作空白画布，不影响继续玩 */
+    inked = false
+    paintBackground()
+  }
+  img.src = image
 }
 
 function toDataURL(): string {
@@ -243,6 +281,7 @@ function hasInk(): boolean {
 const api: DrawingBoardApi = {
   toDataURL,
   hasInk,
+  restoreImage,
   clear,
   undo,
   setColor,

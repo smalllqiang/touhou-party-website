@@ -76,4 +76,39 @@ describe('useCountdown', () => {
     vi.advanceTimersByTime(1_000)
     expect(onExpire).toHaveBeenCalledTimes(1)
   })
+
+  it('从持久化的剩余时间恢复，保留原始总时长', () => {
+    const { cd } = createCountdown()
+    cd.restore(7, 10)
+
+    expect(cd.total.value).toBe(10)
+    expect(cd.remaining.value).toBe(7)
+    expect(cd.running.value).toBe(true)
+
+    clockNow = 2_000
+    vi.advanceTimersByTime(100)
+    expect(cd.remaining.value).toBeCloseTo(5, 1)
+  })
+
+  it('恢复时可以直接处于暂停状态', () => {
+    const { cd } = createCountdown()
+    cd.restore(7, 10, true)
+
+    expect(cd.paused.value).toBe(true)
+    expect(cd.remaining.value).toBeCloseTo(7, 1)
+
+    clockNow = 9_000
+    vi.advanceTimersByTime(1_000)
+    expect(cd.remaining.value).toBeCloseTo(7, 1)
+  })
+
+  it('恢复 0 秒时不启动，交给调用方决定是否显示时间到', () => {
+    const { cd, onExpire } = createCountdown()
+    cd.restore(0, 10)
+
+    expect(cd.total.value).toBe(10)
+    expect(cd.remaining.value).toBe(0)
+    expect(cd.running.value).toBe(false)
+    expect(onExpire).not.toHaveBeenCalled()
+  })
 })

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount } from 'vue'
 import DrawingBoard from '@/components/DrawingBoard.vue'
 import type { DrawGuessConfig } from '@/config/normalize'
 import type { Artwork, Phase } from './useDrawGuess'
-import type { DrawingBoardApi } from '@/lib/drawing-board'
+import type { DrawingBoardApi, DrawingSnapshot } from '@/lib/drawing-board'
 import { formatTime } from '@/lib/utils'
 
 const props = defineProps<{
@@ -33,6 +33,7 @@ const emit = defineEmits<{
   'timeup-next': []
   'open-image': [src: string]
   board: [api: DrawingBoardApi | null]
+  'board-change': [snapshot: DrawingSnapshot]
 }>()
 
 const ratio = computed(() => {
@@ -102,6 +103,7 @@ onBeforeUnmount(() => emit('board', null))
             :paused="paused"
             :locked="locked"
             @ready="emit('board', $event)"
+            @change="emit('board-change', $event)"
           />
         </div>
         <div class="play-actions">

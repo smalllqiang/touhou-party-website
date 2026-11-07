@@ -235,6 +235,82 @@ test('谁是卧底：抽题 → 查看 → 发牌 → 按住看词 → 一键翻
   await expect(page.locator('.uc-topic')).toHaveClass(/is-hidden/)
 })
 
+test('刷新不丢进度：你画我猜恢复阶段、选手名与笔迹', async ({ page }) => {
+  await page.goto('/')
+
+  await page.locator('.topic-picker summary').click()
+  const lastItem = page.locator('.topic-pick-item').last()
+  await lastItem.click()
+  await page.locator('#playerA').fill('刷新A')
+  await page.locator('#playerB').fill('刷新B')
+  await page.getByRole('button', { name: '确定', exact: true }).click()
+
+  await expect(page.locator('.play')).toBeVisible()
+  await stroke(page)
+  await page.waitForTimeout(500)
+
+  await page.reload()
+  await expect(page.locator('.play')).toBeVisible()
+  await expect(page.locator('.play-meta')).toContainText('第 1 / ' + GAME_CONFIG.drawGuess.rounds + ' 轮')
+  await expect(page.locator('.play-meta')).toContainText('A · 画图')
+  await expect(page.locator('.play-meta')).toContainText('刷新A')
+
+  // 画板上的笔迹要一起恢复（白色背景 + 笔迹）
+  await expect.poll(async () => page.locator('#boardHost canvas').evaluate((el) => {
+    const canvas = el as HTMLCanvasElement
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < 240 || data[i + 1] < 240 || data[i + 2] < 240) return true
+    }
+    return false
+  })).toBe(true)
+
+  // 继续推进：作品照常捕获，题目仍然是刷新前那一题
+  await page.waitForTimeout(500)
+  await page.locator('.play-actions .btn.primary').click()
+  await expect(page.locator('.play-meta')).toContainText('B · 猜词')
+
+  await page.reload()
+  await expect(page.locator('.play-meta')).toContainText('B · 猜词')
+  await expect(page.locator('.ref-img')).toBeVisible()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '结束本局' }).click()
+  await expect(page.locator('.result')).toBeVisible()
+  await expect(page.locator('.artwork-card')).toHaveCount(1)
+})
+
+test('刷新不丢进度：谁是卧底恢复发牌与已查看 / 已翻开状态', async ({ page }) => {
+  await page.goto('/#/undercover')
+  await page.locator('.uc-step-btn', { hasText: '+' }).click()
+  await page.locator('.uc-name-field input').first().fill('阿一')
+  await page.getByRole('button', { name: '抽题', exact: true }).click()
+  await page.getByRole('button', { name: /开始发牌/ }).click()
+
+  await expect(page.locator('.uc-reveal')).toBeVisible()
+  await expect(page.locator('.uc-card')).toHaveCount(5)
+
+  const hold = page.locator('.uc-hold-btn').first()
+  const box = await hold.boundingBox()
+  if (!box) throw new Error('按住按钮没有渲染出来')
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await expect(page.locator('.uc-card').first()).toHaveClass(/is-open/)
+  await page.mouse.up()
+  await expect(page.locator('.uc-card-seen').first()).toBeVisible()
+
+  await page.getByRole('button', { name: /一键翻开全部卡片/ }).click()
+  const spyName = (await page.locator('.uc-banner b').innerText()).trim()
+  await expect(page.locator('.uc-banner')).toBeVisible()
+
+  await page.reload()
+  await expect(page.locator('.uc-reveal')).toBeVisible()
+  await expect(page.locator('.uc-card')).toHaveCount(5)
+  await expect(page.locator('.uc-card-seen').first()).toBeVisible()
+  await expect(page.locator('.uc-banner')).toBeVisible()
+  await expect(page.locator('.uc-banner b')).toHaveText(spyName)
+})
+
 test('窄屏：抽屉可以打开并点遮罩关闭', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')

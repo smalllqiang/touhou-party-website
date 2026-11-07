@@ -39,6 +39,7 @@ const {
   saveOne,
   saveAll,
   openImage,
+  onBoardChange,
 } = useDrawGuess()
 </script>
 
@@ -82,6 +83,7 @@ const {
     @timeup-next="requestNextPhase"
     @open-image="openImage"
     @board="setBoard"
+    @board-change="onBoardChange"
   />
   <ResultScreen
     v-else

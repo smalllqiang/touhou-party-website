@@ -60,6 +60,23 @@ export function useCountdown(options: CountdownOptions) {
     handle = window.setInterval(tick, 100)
   }
 
+  /**
+   * 从持久化的剩余时间继续（刷新恢复用）。
+   * `totalSeconds` 保留本阶段原始时长，进度条不会因为恢复而变满。
+   */
+  function restore(remainingSeconds: number, totalSeconds: number, shouldPause = false): void {
+    stop()
+    total.value = Math.max(0, totalSeconds)
+    const left = Math.max(0, Math.min(remainingSeconds, totalSeconds))
+    remaining.value = left
+    lastTickSecond = null
+    if (left <= 0) return
+    running.value = true
+    deadline = now() + left * 1000
+    handle = window.setInterval(tick, 100)
+    if (shouldPause) pause()
+  }
+
   function pause(): void {
     if (!running.value || paused.value) return
     remaining.value = Math.max(0, (deadline - now()) / 1000)
@@ -74,5 +91,5 @@ export function useCountdown(options: CountdownOptions) {
 
   onScopeDispose(stop)
 
-  return { total, remaining, paused, running, start, pause, resume, stop }
+  return { total, remaining, paused, running, start, restore, pause, resume, stop }
 }

@@ -44,6 +44,8 @@ setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase
 
 作品对象：`image` 是 PNG dataURL（`board.toDataURL()`），`blank = !board.hasInk()`。
 
+除抽题动画、`popKey`、`inputBlockedUntil` 这些瞬时 UI 外，本局状态会写进 `localStorage`，刷新后恢复；字段与校验规则见 [../persistence.md](../persistence.md)。
+
 ## 抽题与题目列表
 
 - `roll()`：从洗牌池取题 → `spinning = true` → 每 55ms 随机换一次显示文本，14 tick 后落定 → `popKey += 1`（模板用 `:key` 重挂载题目槽，重播 `.pop` 动画）+ 提示音。
@@ -63,6 +65,7 @@ setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase
 - 暂停：`useCountdown.pause()` 冻结剩余时间；继续时用剩余时间重算 deadline。画板通过 `paused` prop 显示遮罩。
 - 时间到：`locked = true`、`board` 的 `locked` prop 生效、两声提示音 + 震动、显示 `.timeup`；`autoNextOnTimeout !== false` 时 1.6 秒后自动 `nextPhase()`。
 - 时间到后点「下一步」：`requestNextPhase()` 走 `locked` 分支，不做空白检查，直接推进。
+- 刷新恢复：持久化的 `remaining` / `paused` 交给 `useCountdown.restore()`，保留本阶段总时长；已经 `locked` 的恢复到「时间到」遮罩，但不会重新排自动跳转，等主持人点「下一步」。
 
 ## 阶段推进
 
@@ -70,9 +73,16 @@ setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase
   - `now() < inputBlockedUntil` 直接返回（进入阶段后 450ms 防双击）；
   - `locked` 时不检查空白，直接 `nextPhase()`；
   - 否则画板 `hasInk()` 为 false 时弹 `confirm('画板还是空白的，确定要进入下一阶段吗？')`，取消则不推进。
-- `nextPhase()`：`transitioning` 防重入；清定时器、停计时、`captureCurrent()`，然后 A→B / 换轮 / 进结果。
+- `nextPhase()`：`transitioning` 防重入；清定时器、停计时、`captureCurrent()`，然后 A→B / 换轮 / 进结果。`captureCurrent()` 同时删除画板快照键。
 - `quitGame()`：确认后直接进结果；**只有画板有笔迹时才捕获**（正常推进会把空白作品也记下来并打「空白」标签）。
 - 每个阶段 `PlayScreen` 用 `:key="phase-round"` 重新挂载，保证进入新阶段是一块干净画板。
+
+## 持久化与恢复
+
+- 状态键 `draw-guess:state`：`screen` / `topic` / `players` / `round` / `phase` / `artworks` / `pool` / `remaining` / `paused` / `locked` / `timeUpVisible`。
+- 画板键 `draw-guess:board`：`{ round, phase, image, inked }`，`DrawingBoard` 抬笔 / 撤销 / 清空时 emit `change`，composable 节流 300ms 写入；`setBoard()` 时只恢复同一 `round + phase` 的快照。
+- 写入时机：状态 `watch` + 暂停 / 切阶段 / 时间到主动写；`pagehide` / 标签页隐藏 / 卸载时补写剩余时间与当前画板。
+- 完整机制、配额降级与键名见 [../persistence.md](../persistence.md)。
 
 ## 结果与保存
 
@@ -103,5 +113,6 @@ setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase
 - `board` 只在 play 阶段有效；`PlayScreen` 卸载会 emit `board: null`。不要在 setup / result 调画板 API。
 - 抽题动画会先消耗题目再滚动；滚动中可能一闪而过地显示最终题目。对 A 不是秘密，可接受。
 - `inputBlockedUntil` 只在进入阶段时设置，结果页没有。
-- `board.hasInk()` 在「清空后撤销」时会返回 `false` 但画面有内容，见 [../drawing-board.md](../drawing-board.md)。
+- 刷新恢复时 `inputBlockedUntil` 归零，主持人可以立刻点「下一阶段」；这是有意的，别把它当成防抖失效。
+- 画板撤销前的历史不持久化：刷新后能继续画，但「撤销」只能撤销刷新后的笔画。
 - `saveAll` 的定时器登记在 `useTimers` 里；离开结果页会自动清理，不会继续触发下载。

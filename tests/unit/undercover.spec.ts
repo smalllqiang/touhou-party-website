@@ -5,7 +5,7 @@ import { useUndercover } from '@/games/undercover/useUndercover'
 
 let wrappers: ReturnType<typeof mount>[] = []
 
-function setupGame() {
+function setupGameWithWrapper() {
   let game!: ReturnType<typeof useUndercover>
   const wrapper = mount(defineComponent({
     setup() {
@@ -14,7 +14,11 @@ function setupGame() {
     },
   }))
   wrappers.push(wrapper)
-  return game
+  return { game, wrapper }
+}
+
+function setupGame() {
+  return setupGameWithWrapper().game
 }
 
 afterEach(() => {
@@ -107,5 +111,47 @@ describe('useUndercover', () => {
     game.pickTopic(9999)
     expect(game.topic.value).toBeNull()
     expect(game.screen.value).toBe('setup')
+  })
+
+  it('刷新恢复：发牌页的人数、名字、卧底与查看状态', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const first = setupGameWithWrapper()
+    first.game.setCount(5)
+    first.game.setName(0, '小明')
+    first.game.pickTopic(0)
+    first.game.startReveal()
+    first.game.openPeek(1)
+    first.game.flipAll()
+
+    const spyName = first.game.spy.value?.name
+    const topicText = first.game.topic.value?.normal.text
+    first.wrapper.unmount()
+    wrappers = wrappers.filter((w) => w !== first.wrapper)
+
+    const second = setupGameWithWrapper()
+    expect(second.game.screen.value).toBe('reveal')
+    expect(second.game.count.value).toBe(5)
+    expect(second.game.assignments.value).toHaveLength(5)
+    expect(second.game.assignments.value[0].name).toBe('小明')
+    expect(second.game.spy.value?.name).toBe(spyName)
+    expect(second.game.topic.value?.normal.text).toBe(topicText)
+    expect(second.game.seen.value[1]).toBe(true)
+    expect(second.game.allRevealed.value).toBe(true)
+    expect(second.game.peekIndex.value).toBe(-1)
+  })
+
+  it('刷新恢复：设置页的人数、名字与已抽到的题目', () => {
+    const first = setupGameWithWrapper()
+    first.game.setCount(6)
+    first.game.setName(2, '阿三')
+    first.game.pickTopic(1)
+    first.wrapper.unmount()
+    wrappers = wrappers.filter((w) => w !== first.wrapper)
+
+    const second = setupGameWithWrapper()
+    expect(second.game.screen.value).toBe('setup')
+    expect(second.game.count.value).toBe(6)
+    expect(second.game.names.value[2]).toBe('阿三')
+    expect(second.game.activeTopicIndex.value).toBe(1)
   })
 })

@@ -13,7 +13,8 @@
 
 | 文档 | 内容 | 什么时候读 |
 | --- | --- | --- |
-| [`architecture.md`](architecture.md) | 技术栈、启动流程、路由、组件树、状态归属、构建与部署、已知取舍 | 想弄清「页面怎么跑起来的」、要接入新游戏时 |
+| [`architecture.md`](architecture.md) | 技术栈、启动流程、路由、组件树、状态归属、持久化、构建与部署、已知取舍 | 想弄清「页面怎么跑起来的」、要接入新游戏时 |
+| [`persistence.md`](persistence.md) | localStorage 键名、数据形状、恢复时机、配额与重置办法 | 改本局进度保存、刷新恢复行为时 |
 | [`config.md`](config.md) | `src/config/index.ts`、配置类型与兜底、题目写法、配图路径、生效时机 | 改题目、倒计时、人数、配图路径时 |
 | [`games/draw-guess.md`](games/draw-guess.md) | 你画我猜：组件拆分、状态机、计时模型、作品保存 | 改你画我猜流程或修它的 bug |
 | [`games/undercover.md`](games/undercover.md) | 谁是卧底：配置归一化、发牌、按住查看、一键翻开 | 改谁是卧底流程 |
@@ -39,7 +40,7 @@
 | [`src/composables/`](../src/composables/) | `useCountdown` / `useTimers` / `useLightbox` |
 | [`src/config/index.ts`](../src/config/index.ts) | 唯一配置源 |
 | [`src/config/normalize.ts`](../src/config/normalize.ts) | 配置归一化与兜底（类型也在这里） |
-| [`src/lib/`](../src/lib/) | 通用工具、资源 URL、画板 API 类型 |
+| [`src/lib/`](../src/lib/) | 通用工具、资源 URL、画板 API 类型、localStorage 持久化层 |
 | [`src/styles/main.css`](../src/styles/main.css) | 全部样式（单文件全局样式） |
 | [`public/images/undercover/`](../public/images/undercover/) | 卧底配图（不参与打包，按 URL 运行期加载） |
 | [`src/assets/bg/`](../src/assets/bg/) | 内容区背景图（随构建打包、带哈希） |
@@ -48,9 +49,9 @@
 
 ## 关键不变量（改代码不得破坏）
 
-1. **纯静态、无网络请求、无持久化**：构建产物放到静态服务器即可运行；不引入后端、API、`localStorage`。
+1. **纯静态、无后端、无网络请求**：构建产物放到静态服务器即可运行；唯一的外部状态是本机 `localStorage` 里的本局进度。
 2. **配置是构建期模块**：`src/config/index.ts` 被静态 import；改配置靠 dev server 的 HMR 或重新 `npm run build` 生效，运行期没有全局配置对象可改。
-3. **状态不持久化**：刷新页面 = 全部重置；游戏状态只存在于组件 / composable 中。
+3. **刷新不丢本局进度**：阶段 / 题目 / 作品 / 发牌结果要能跨刷新恢复；新增游戏也必须接入 [`src/lib/persist.ts`](../src/lib/persist.ts)（见 [persistence.md](persistence.md)）。
 4. 谁是卧底的**抽题不能有滚动动画**：滚动会掠过题目池里其它词 = 泄题。
 5. 谁是卧底的「按住查看」按钮**不能监听 `pointerleave` / `pointerout`**：卡片翻转动画会触发假 leave，导致刚翻开就合上。
 6. 谁是卧底**恰好 1 名卧底**；卡片序号 = 玩家顺序。
@@ -68,5 +69,6 @@
 | 改题目列表 / 手动指定题目 | 共用 [`TopicPicker.vue`](../src/components/TopicPicker.vue)；样式在 `src/styles/main.css` 的「通用元件」 |
 | 换背景图 | `src/assets/bg/` + `.content-bg`（见 [styles.md](styles.md)） |
 | 给卧底词配图 | 图片放进 `public/images/undercover/`，文件名 = 词 + `imageExt`（见 [assets.md](assets.md)） |
-| 新增小游戏 | [development.md](development.md) 的步骤 |
+| 新增小游戏 | [development.md](development.md) 的步骤；记得加持久化 |
+| 改刷新恢复 / 清进度 | [`src/lib/persist.ts`](../src/lib/persist.ts) + 各游戏 composable（见 [persistence.md](persistence.md)） |
 | 验证改动 | `npm run build` + `npm test` + `npm run test:e2e`（见 [testing.md](testing.md)） |

@@ -80,6 +80,7 @@ function onName(who: 'A' | 'B', e: Event): void {
           <li><span>题目数量</span><b>{{ config.topics.length }} 个</b></li>
         </ul>
         <p class="hint">这些数字和题目列表都在 <code>src/config/index.ts</code> 里改，保存后刷新页面即可。</p>
+        <p class="hint">本局进度自动保存在浏览器里：刷新、切走游戏或误关页面后，再打开还能接着画。</p>
       </div>
       <div class="card rules">
         <h3>玩法</h3>

@@ -168,6 +168,9 @@ function onPick(index: number): void {
           人数、默认名字、图片文件夹和题目列表都在 <code>src/config/index.ts</code> 的
           <code>undercover</code> 段里改，保存后刷新页面即可。
         </p>
+        <p class="hint">
+          本局进度自动保存在浏览器里：刷新、切走游戏或误关页面后，发牌结果和「已查看」记录都还在。
+        </p>
       </div>
 
       <div class="card rules">

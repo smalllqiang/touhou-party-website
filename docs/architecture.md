@@ -12,7 +12,7 @@
 | 样式 | 单文件全局 CSS（[`src/styles/main.css`](../src/styles/main.css)），无预处理器 / UI 框架 |
 | 状态管理 | 不引入 Pinia；状态放 composable 或组件内 |
 | 网络请求 | 无。只加载本地静态资源（图片、构建产物） |
-| 持久化 | 无。刷新 = 状态全部重置 |
+| 持久化 | `localStorage`，仅保存本局进度；刷新 / 切游戏 / 误关页面后可继续，见 [persistence.md](persistence.md) |
 | 后端 | 无。`npm run build` 后是纯静态 `dist/` |
 | 测试 | Vitest（逻辑）+ Playwright（浏览器流程），见 [testing.md](testing.md) |
 
@@ -64,6 +64,7 @@ DrawGuessView.vue
 - `useDrawGuess` 持有 `screen`、`topic`、`round`、`phase`、`artworks`、计时与锁定状态。
 - `PlayScreen` 用 `:key="phase-round"` 强制重挂载：每进入一个阶段就是一块新画板，避免跨阶段残留笔迹。
 - 画板通过 `@ready` 把命令式 API 交给父级，`useDrawGuess.setBoard()` 保存；`captureCurrent()` 在切阶段前调用 `toDataURL()` / `hasInk()`。
+- 画板每完成一笔 / 撤销 / 清空会 emit `change`；`useDrawGuess` 节流保存当前阶段快照，刷新后由 `setBoard()` 调 `restoreImage()` 画回去。
 - 阶段推进、空白确认、时间到自动下一步等规则见 [games/draw-guess.md](games/draw-guess.md)。
 
 ### 谁是卧底
@@ -76,7 +77,7 @@ UndercoverView.vue
 │  └─ UcCard.vue            # 单张卡片 + 按住查看
 ```
 
-- `useUndercover` 持有 `count`、`names`、`topic`、`assignments`、`seen`、`peekIndex`、`allRevealed`。
+- `useUndercover` 持有 `count`、`names`、`topicIndex`、`assignments`、`seen`、`peekIndex`、`allRevealed`；`topic` 是由下标派生的 computed。
 - 卡片按住/松手通过 `UcCard` 的 pointer 事件 + `window` 捕获阶段监听实现；`window.blur` 与 `visibilitychange` 由 composable 统一挂载 / 移除。
 - 详细约束见 [games/undercover.md](games/undercover.md)。
 
@@ -88,8 +89,19 @@ UndercoverView.vue
 | 倒计时 | `useCountdown()`：基于 `deadline = performance.now() + 秒数 * 1000`，每 100ms 计算剩余时间；组件卸载自动停 |
 | 切走游戏 | RouterView 换组件 → 组件卸载 → `useTimers` / `useCountdown` 的 scope dispose 生效；无需手写 `destroy()` |
 | 画板 | 画板只活在一个阶段内；`PlayScreen` 卸载时 emit `board: null`，父级清空引用 |
+| 刷新 / 关页 | composable 在 `pagehide`、`visibilitychange(hidden)`、组件卸载时补写进度；见下节 |
 
 **不要**在组件里裸用 `setInterval` / `setTimeout` 而不登记；否则切游戏后回调仍可能执行。
+
+## 进度持久化（localStorage）
+
+存储层是 [`src/lib/persist.ts`](../src/lib/persist.ts)，细节（键名、数据形状、配额策略）集中在 [persistence.md](persistence.md)。
+
+- 每个游戏 composable 在 setup 时**同步**读回本局状态并校验；坏数据 / 版本不符直接丢弃，不阻塞渲染。
+- 状态变化通过 `watch(..., { deep: true })` 写入；`pagehide` / 隐藏标签页 / 卸载时额外补写「剩余时间 + 画板快照」这类高频或易丢字段。
+- 画板快照单独一个键并节流 300ms：每画一笔都重写作品列表代价太大。状态写不进去（配额满）时优先删画板快照，保住阶段和作品。
+- 提示音、抽题滚动动画、`peekIndex`（正在按住的卡片）等瞬时 UI 状态不持久化。
+- 没有「后端同步」：换浏览器、隐私模式或清站点数据就从头开始。
 
 ## 配置读取时机
 
@@ -117,5 +129,6 @@ UndercoverView.vue
 - **没有 SSR**：这是线下聚会用的单页工具，SEO / 首屏内容不是目标。
 - **没有 Pinia**：两个游戏的状态互不共享，composable 足够；引入全局 store 只会增加一层间接。
 - **配置是构建期常量**：换来类型检查与更简单的代码；代价是改配置后生产产物要重新构建。
+- **进度存在 localStorage**：受 5MB 配额限制，作品图片是 dataURL；配额写满时降级为「不保存画板快照，尽量保住阶段与作品」。换浏览器 / 清站点数据会丢进度，这是纯静态、无后端的必然取舍。
 - **图片体积**：`public/images/undercover/` 目前约 24MB PNG，构建时会原样复制。手机局域网首次加载可能偏慢，转 WebP 是后续可做的优化，不影响当前架构。
 - **没有错误边界**：任一模块抛错会由 Vue 冒泡；`main.ts` 没有兜底 UI。纯静态工具站可接受。
