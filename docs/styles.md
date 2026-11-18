@@ -1,6 +1,6 @@
 # 样式（src/styles/main.css）
 
-单文件全局样式表，约 1600 行，**无预处理器、无 CSS 框架、无 scoped**。规则按下面的章节顺序书写，新增样式请追加到对应章节末尾，不要打乱顺序。
+单文件全局样式表，约 1780 行，**无预处理器、无 CSS 框架、无 scoped**。规则按下面的章节顺序书写，新增样式请追加到对应章节末尾，不要打乱顺序。
 
 ## 章节顺序
 
@@ -10,7 +10,7 @@
 | 基础重置 | `*`、`body`、滚动条等 |
 | 整体两栏布局 | `.app`（flex：`.sidebar` + `.content`） |
 | 右侧背景图 | `.content-bg`（`position: fixed`）+ `.content-bg::after`（暗化层） |
-| 左侧导航栏 | `.sidebar`、`.brand*`、`.nav`、`.nav-item`、`.sidebar-footer` |
+| 左侧导航栏 | `.sidebar`、`.brand*`、`.nav`、`.nav-item`、`.sidebar-footer`、`.sidebar-toggle` |
 | 右侧内容区 | `.content`、`.content-header`、`.content-body`、`.page-subtitle` |
 | 通用元件 | `.btn`（`primary` / `blue` / `ghost` / `small` / `danger`）、`.card`、`.panel`、`.tag`（`.a` / `.b`）、`.topic*`、`.topic-picker*`、`.settings-list`、`.hint`、`.muted`、`.eyebrow` |
 | 你画我猜 —— 抽题界面 | `.setup`、`.topic-stage`、`.setup-grid`、`.rolling` / `.pop` 动画 |
@@ -18,7 +18,7 @@
 | 你画我猜 —— 游戏界面 | `.play*`、`.timer*`、`.timeup*` |
 | 你画我猜 —— 结果页 | `.result*`、`.artworks`、`.artwork-card` |
 | 谁是卧底 | `.uc-*`（设置 / 人数与名字 / 发牌 / 卡片 / 横幅） |
-| 响应式 | `@media (prefers-reduced-motion)`、`(max-width: 1100px)`、`(max-width: 820px)` |
+| 响应式 | `@media (min-width: 821px)`（侧栏收起）、`(max-width: 1100px)`、`(max-width: 820px)`、`(prefers-reduced-motion)` |
 
 class 命名约定：谁是卧底专属一律 `uc-` 前缀；画板一律 `board` 前缀；其余为通用或你画我猜。跨游戏复用的元件用通用名（如 `.topic-picker*`、`.topic-pick-*`），**不**带 `dg-` / `uc-` 前缀。
 
@@ -37,7 +37,7 @@ class 命名约定：谁是卧底专属一律 `uc-` 前缀；画板一律 `board
 | `--accent` / `--accent-ink` / `--accent-soft` | 强调色（枫叶粉） |
 | `--blue` / `--blue-soft` | 次强调色（月光蓝） |
 | `--green` | 成功态文字色 |
-| `--sidebar-bg` / `--sidebar-bg-2` / `--sidebar-ink` / `--sidebar-w` | 侧栏渐变两端、文字、宽度（`248px`） |
+| `--sidebar-bg` / `--sidebar-bg-2` / `--sidebar-ink` / `--sidebar-w` | 侧栏渐变两端、文字、宽度（展开 `248px`；宽屏收起时由 `.app.sidebar-collapsed` 覆盖为 `76px`） |
 | `--radius` / `--radius-sm` | 圆角 |
 | `--shadow` / `--shadow-sm` | 阴影 |
 
@@ -80,11 +80,12 @@ class 命名约定：谁是卧底专属一律 `uc-` 前缀；画板一律 `board
 
 | 断点 | 变化 |
 | --- | --- |
+| `min-width: 821px` | 侧栏可收起为图标栏：`.app.sidebar-collapsed` 把 `--sidebar-w` 改成 `76px`，隐藏 `.brand-text` / `.nav-label` / `.nav-text` / `.sidebar-footer-text`，导航项只留图标并居中；`.sidebar-toggle` 圆钮显示在侧栏右边缘；`.content-bg` 的 `left` 跟着收窄 |
 | `max-width: 1100px` | `.play-side` 收窄到 240px；HUD 底部留白加大，给换行的画板工具栏让位 |
 | `max-width: 820px` | 侧栏变抽屉：`.sidebar` `position: fixed` + `translateX(-100%)`，`body.nav-open .sidebar` 滑入，`body.nav-open .backdrop` 显示；`.content-bg { left: 0 }` 铺满视口；`.play-top` 收窄、操作按钮独占一行；画板工具栏贴底换行、色块缩小 |
 | `prefers-reduced-motion: reduce` | 关闭卡片翻转过渡与 `pop` 等动画 |
 
-抽屉状态类 `body.nav-open` 由 [`App.vue`](../src/App.vue) 维护（`navOpen` ref → class），样式只负责表现。
+两个状态类都由 [`App.vue`](../src/App.vue) 维护：宽屏收起是 `.app.sidebar-collapsed`（`sidebarCollapsed` ref，并写入 localStorage 的 `touhou-party:sidebar-collapsed`）；窄屏抽屉是 `body.nav-open`（`navOpen` ref → class）。样式只负责表现；收起规则写在 `min-width: 821px` 里，所以窄屏抽屉宽度始终按 `:root` 的 `248px` 走。
 
 ## 动画
 
@@ -93,7 +94,7 @@ class 命名约定：谁是卧底专属一律 `uc-` 前缀；画板一律 `board
 ## 陷阱
 
 - 硬编码颜色会让两个游戏与侧栏脱节；一律走变量。
-- `.content-bg` 的 `left: var(--sidebar-w)` 与侧栏宽度**强耦合**：改 `--sidebar-w` 时检查是否有写死 `248px` 的地方。
+- `.content-bg` 的 `left: var(--sidebar-w)` 与侧栏宽度**强耦合**：改 `--sidebar-w` 时检查是否有写死 `248px` 的地方；宽屏收起时覆盖值在 `.app.sidebar-collapsed`（`76px`），两处要一起改。
 - 画板内部分辨率固定 `1024 × 576`（见 [drawing-board.md](drawing-board.md)）；CSS 把它拉伸到内容区的实际宽高比。指针坐标按外框比例映射，屏幕上的笔迹严格跟随光标；但导出的 PNG 仍是 `1024 × 576`，宽高比不同时作品相对手势会轻微拉伸。
 - 弹窗 / 遮罩用 `--glass-solid` 而不是 `--glass`，否则背后内容会透出来。
 - 组件不加 scoped style：所有类名是全局契约，改名会同时影响样式和端到端选择器。

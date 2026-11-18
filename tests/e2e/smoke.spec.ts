@@ -345,3 +345,31 @@ test('窄屏：抽屉可以打开并点遮罩关闭', async ({ page }) => {
   await page.locator('.backdrop').click({ position: { x: 380, y: 400 } })
   await expect(page.locator('body')).not.toHaveClass(/nav-open/)
 })
+
+test('宽屏：侧栏可收起成图标栏，刷新后记住状态', async ({ page }) => {
+  await page.goto('/')
+  const app = page.locator('.app')
+  const sidebar = page.locator('.sidebar')
+  const expandedWidth = (await sidebar.boundingBox())!.width
+
+  // 收起：侧栏变窄，文字隐藏，背景图让出位置
+  await page.getByRole('button', { name: '收起侧栏' }).click()
+  await expect(app).toHaveClass(/sidebar-collapsed/)
+  await expect(page.getByRole('button', { name: '展开侧栏' })).toHaveAttribute('aria-expanded', 'false')
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeLessThan(expandedWidth - 100)
+  await expect(page.locator('.nav-text').first()).toBeHidden()
+
+  // 收起后仍然可以切换游戏
+  await page.locator('.nav-item', { hasText: '谁是卧底' }).click()
+  await expect(page).toHaveURL(/#\/undercover$/)
+
+  // 刷新后保持收起状态
+  await page.reload()
+  await expect(app).toHaveClass(/sidebar-collapsed/)
+  await expect(page.getByRole('button', { name: '展开侧栏' })).toBeVisible()
+
+  // 展开后恢复原宽度
+  await page.getByRole('button', { name: '展开侧栏' }).click()
+  await expect(app).not.toHaveClass(/sidebar-collapsed/)
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeGreaterThan(expandedWidth - 1)
+})

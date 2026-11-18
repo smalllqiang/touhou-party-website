@@ -83,6 +83,7 @@ ol, ul { padding: 0; list-style: none; }
   left: var(--sidebar-w);
   z-index: 0;
   pointer-events: none;
+  transition: left .22s ease;
   background-color: var(--sky-deep);
   background-image: url("../assets/bg/night-sky.jpg");
   background-image: image-set(
@@ -123,6 +124,7 @@ ol, ul { padding: 0; list-style: none; }
   height: 100vh;
   z-index: 40;
   border-right: 1px solid rgba(255, 255, 255, .06);
+  transition: flex-basis .22s ease, width .22s ease, padding .22s ease;
 }
 
 .brand {
@@ -148,6 +150,39 @@ ol, ul { padding: 0; list-style: none; }
   font-size: 10px;
   letter-spacing: 2px;
   color: #6f7a92;
+}
+
+/* 侧栏收起 / 展开：骑在侧栏右边缘的小圆钮，宽屏才出现 */
+.sidebar-toggle {
+  display: none;
+  position: absolute;
+  top: 28px;
+  right: -13px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--sidebar-bg-2);
+  color: var(--sidebar-ink);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background .15s, color .15s, border-color .15s;
+}
+
+.sidebar-toggle:hover {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
 }
 
 .nav-label {
@@ -1645,6 +1680,48 @@ ol, ul { padding: 0; list-style: none; }
 /* ============================================================
    响应式
    ============================================================ */
+/* 宽屏：侧栏可收起成图标栏（App.vue 的 sidebarCollapsed → .app.sidebar-collapsed）
+   --sidebar-w 挂在 .app 上，背景图的 left 跟着一起收窄 */
+@media (min-width: 821px) {
+  .app.sidebar-collapsed { --sidebar-w: 76px; }
+
+  .sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app.sidebar-collapsed .sidebar {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .app.sidebar-collapsed .brand {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .app.sidebar-collapsed .brand-text,
+  .app.sidebar-collapsed .nav-label,
+  .app.sidebar-collapsed .nav-text,
+  .app.sidebar-collapsed .sidebar-footer-text {
+    display: none;
+  }
+
+  .app.sidebar-collapsed .nav-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .app.sidebar-collapsed .sidebar-footer {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
 @media (max-width: 1100px) {
   .play-hud { padding-bottom: 116px; }
   .play-side { width: 240px; }

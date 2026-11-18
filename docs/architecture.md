@@ -114,7 +114,7 @@ UndercoverView.vue
 
 - 组件通过 `ref` 与模板事件定位 DOM；`main.css` 的选择器全是通用类名（`.nav-item`、`.topic`、`.uc-card`…），组件目录与类名一一对应。
 - 两个游戏的屏幕组件沿用同一套类名，因此样式在游戏之间复用。
-- 全局状态类只有 `body.nav-open`，由 `App.vue` 维护，CSS 负责抽屉动画。
+- 全局状态类有 `body.nav-open`（窄屏抽屉）与 `.app.sidebar-collapsed`（宽屏侧栏收起），均由 `App.vue` 维护，CSS 负责布局与动画；收起状态同时写入 localStorage，刷新后保持。
 - 交互中的展示态类：`.is-active`（导航 / 题目列表）、`.is-open` / `.is-spy`（卧底卡片）、`.is-empty` / `.rolling` / `.pop`（抽题槽）、`.is-shown` / `.is-hidden`（卧底题目槽）、`.is-locked`（画板）。
 
 ## 构建与部署

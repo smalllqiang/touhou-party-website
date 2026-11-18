@@ -29,7 +29,7 @@
 | 路径 | 职责 |
 | --- | --- |
 | [`src/main.ts`](../src/main.ts) | 创建 Vue 应用、挂路由、引入全局样式 |
-| [`src/App.vue`](../src/App.vue) | 应用外壳：侧栏、导航、标题、窄屏抽屉、lightbox |
+| [`src/App.vue`](../src/App.vue) | 应用外壳：侧栏（宽屏可收起）、导航、标题、窄屏抽屉、lightbox |
 | [`src/router/index.ts`](../src/router/index.ts) | hash 路由：`#/draw-guess`、`#/undercover`，未知路径回退到首个游戏 |
 | [`src/games/registry.ts`](../src/games/registry.ts) | 游戏注册表：路由名、导航文案、标题、组件；新增游戏只改这里 |
 | [`src/games/draw-guess/`](../src/games/draw-guess/) | 你画我猜：`DrawGuessView.vue` + `useDrawGuess.ts` + 三个屏幕组件 |
