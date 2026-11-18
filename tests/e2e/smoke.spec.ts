@@ -86,6 +86,28 @@ test('你画我猜：抽题 → 两轮 → 结果页 → 保存 / 放大 / 再�
   await expect(page.locator('.timer-value')).toHaveText(/^\d{2}:\d{2}$/)
   await expect(page.locator('#boardHost canvas')).toBeVisible()
 
+  // 画板铺满内容区，顶栏 / 参考面板悬浮在画板之上（画板不被挤下去）
+  const bodyBox = await page.locator('.content-body').boundingBox()
+  const boardBox = await page.locator('#boardHost canvas').boundingBox()
+  expect(bodyBox).not.toBeNull()
+  expect(boardBox).not.toBeNull()
+  expect(Math.abs(boardBox!.x - bodyBox!.x)).toBeLessThan(1)
+  expect(Math.abs(boardBox!.y - bodyBox!.y)).toBeLessThan(1)
+  expect(Math.abs(boardBox!.width - bodyBox!.width)).toBeLessThan(1)
+  expect(Math.abs(boardBox!.height - bodyBox!.height)).toBeLessThan(1)
+  const topBox = await page.locator('.play-top').boundingBox()
+  expect(topBox!.y).toBeGreaterThanOrEqual(boardBox!.y)
+  expect(topBox!.y).toBeLessThan(boardBox!.y + boardBox!.height * 0.2)
+  const sideBox = await page.locator('.play-side').boundingBox()
+  expect(sideBox!.x + sideBox!.width).toBeLessThanOrEqual(boardBox!.x + boardBox!.width)
+  expect(sideBox!.y).toBeLessThan(boardBox!.y + boardBox!.height * 0.4)
+
+  // 参考面板可以收起 / 再打开，把画板完全让出来
+  await page.getByRole('button', { name: '收起参考' }).click()
+  await expect(page.locator('.play-side')).toBeHidden()
+  await page.getByRole('button', { name: '参考 / 说明' }).click()
+  await expect(page.locator('.play-side')).toBeVisible()
+
   // 走完所有阶段（每个阶段画一笔，避免触发空白确认）
   for (let i = 0; i < phases; i++) {
     await expect(page.locator('.play-meta')).toBeVisible()

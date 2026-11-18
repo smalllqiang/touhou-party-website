@@ -68,12 +68,20 @@ class 命名约定：谁是卧底专属一律 `uc-` 前缀；画板一律 `board
 .uc-card-back  { --ink: #1c2130; --ink-soft: #4b5568; --muted: #78829c; --line: #e2e6f2; }
 ```
 
+## 你画我猜 · 画图界面（全屏画板 + 悬浮 HUD）
+
+- `.content-body:has(.play)` 去掉内边距并 `overflow: hidden`，`.play` 用 `position: absolute; inset: 0` 正好铺满内容区。
+- `.play-board`、`.play .board`、`.play .board-canvas-wrap` 全部 `inset: 0`；canvas `width / height: 100%`。内部分辨率仍是 `1024 × 576`，指针坐标按外框比例映射，所以屏幕上的笔迹始终跟着光标。
+- `.play-hud` 是 `pointer-events: none` 的叠层；只有 `.play-top`、`.play-side`、`.play .board-toolbar` 等具体控件恢复 `auto`，空白处仍然可以画。
+- 层级：画板 canvas < 画板工具栏（`z-index: 3`）< HUD（`z-index: 5`）< 时间到弹窗 `.timeup`（`z-index: 60`）。
+- 参考面板 `.play-side` 靠右悬浮，画板工具栏在底部居中；顶栏的「收起参考 / 参考 / 说明」按钮可随时显隐参考面板。
+
 ## 响应式断点
 
 | 断点 | 变化 |
 | --- | --- |
-| `max-width: 1100px` | `.play-body` 变单列；`.play-side` 改为横向换行 |
-| `max-width: 820px` | 侧栏变抽屉：`.sidebar` `position: fixed` + `translateX(-100%)`，`body.nav-open .sidebar` 滑入，`body.nav-open .backdrop` 显示；`.content-bg { left: 0 }` 铺满视口；画板工具栏换行 |
+| `max-width: 1100px` | `.play-side` 收窄到 240px；HUD 底部留白加大，给换行的画板工具栏让位 |
+| `max-width: 820px` | 侧栏变抽屉：`.sidebar` `position: fixed` + `translateX(-100%)`，`body.nav-open .sidebar` 滑入，`body.nav-open .backdrop` 显示；`.content-bg { left: 0 }` 铺满视口；`.play-top` 收窄、操作按钮独占一行；画板工具栏贴底换行、色块缩小 |
 | `prefers-reduced-motion: reduce` | 关闭卡片翻转过渡与 `pop` 等动画 |
 
 抽屉状态类 `body.nav-open` 由 [`App.vue`](../src/App.vue) 维护（`navOpen` ref → class），样式只负责表现。
@@ -86,6 +94,6 @@ class 命名约定：谁是卧底专属一律 `uc-` 前缀；画板一律 `board
 
 - 硬编码颜色会让两个游戏与侧栏脱节；一律走变量。
 - `.content-bg` 的 `left: var(--sidebar-w)` 与侧栏宽度**强耦合**：改 `--sidebar-w` 时检查是否有写死 `248px` 的地方。
-- 画板内部分辨率固定 `1024 × 576`（见 [drawing-board.md](drawing-board.md)）；CSS 只控制显示尺寸，改动宽高比会让笔迹变形（光标坐标按外框比例映射）。
+- 画板内部分辨率固定 `1024 × 576`（见 [drawing-board.md](drawing-board.md)）；CSS 把它拉伸到内容区的实际宽高比。指针坐标按外框比例映射，屏幕上的笔迹严格跟随光标；但导出的 PNG 仍是 `1024 × 576`，宽高比不同时作品相对手势会轻微拉伸。
 - 弹窗 / 遮罩用 `--glass-solid` 而不是 `--glass`，否则背后内容会透出来。
 - 组件不加 scoped style：所有类名是全局契约，改名会同时影响样式和端到端选择器。

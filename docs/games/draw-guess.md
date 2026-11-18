@@ -5,7 +5,7 @@
 | [`DrawGuessView.vue`](../../src/games/draw-guess/DrawGuessView.vue) | 根组件：按 `screen` 切三个屏幕 |
 | [`useDrawGuess.ts`](../../src/games/draw-guess/useDrawGuess.ts) | 全部状态、计时、阶段推进、作品保存 |
 | [`SetupScreen.vue`](../../src/games/draw-guess/SetupScreen.vue) | 抽题 / 题目列表 / 选手名 / 设置卡片 |
-| [`PlayScreen.vue`](../../src/games/draw-guess/PlayScreen.vue) | 计时、侧栏参考、画板、时间到遮罩 |
+| [`PlayScreen.vue`](../../src/games/draw-guess/PlayScreen.vue) | 全屏画板 + 悬浮 HUD：计时、参考面板、工具栏、时间到遮罩 |
 | [`ResultScreen.vue`](../../src/games/draw-guess/ResultScreen.vue) | 起始题目、作品列表、保存、再玩一局 |
 | [`DrawingBoard.vue`](../../src/components/DrawingBoard.vue) | 画板（见 [../drawing-board.md](../drawing-board.md)） |
 
@@ -26,6 +26,28 @@ setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase
 - 1 轮 = A 阶段（画图）+ B 阶段（猜词），共 `2 × rounds` 个阶段。
 - 任意 play 阶段可被「结束本局」中断直接进 result。
 - `screen`（`setup` / `play` / `result`）与 `phase`（`A` / `B`）共同表达状态。
+
+## 界面布局（play 阶段）
+
+画板铺满整个内容区，其它内容全部悬浮在画板之上：
+
+```text
+┌─────────────────────────────────────────────┐
+│ .play-top：轮次 / 阶段 / 选手 / 计时 / 按钮  │
+│                              ┌────────────┐ │
+│                              │ .play-side │ │
+│  canvas（铺满 .content-body）│ 题目 / 参考 │ │
+│                              │ / 阶段说明  │ │
+│                              └────────────┘ │
+│        .board-toolbar：调色盘 / 工具栏       │
+└─────────────────────────────────────────────┘
+```
+
+- `.play` 是 `position: absolute; inset: 0`，`.content-body:has(.play)` 去掉内边距并禁止滚动，画板因此正好铺满内容区。
+- `.play-hud` 是全屏叠层但 `pointer-events: none`；只有顶栏、参考面板、画板工具栏接收指针事件，空白处照常画画。
+- 参考面板在右侧（A 的题目 / B 参考的上一张作品 + 本阶段说明），顶栏「收起参考 / 参考 / 说明」按钮切换显隐；收起后画板完全露出。
+- 画板工具栏由 `DrawingBoard` 内部渲染，在 play 阶段被样式定位到底部居中（见 [../styles.md](../styles.md)）。
+- 时间到遮罩 `.timeup` 是 `position: fixed`，盖住整个视口，位于 HUD 之上。
 
 ## 状态（`useDrawGuess`）
 
@@ -99,10 +121,12 @@ setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase
 | setup | `.topic-actions .btn` | 抽 / 重来 / 确定；禁用态由 `topic` 与配置量决定 |
 | setup | `.topic-picker`、`.topic-pick-item`、`.is-active` | 共用题目列表 |
 | setup | `#playerA` `#playerB` | 选手名输入（`maxlength=12`） |
-| play | `.play-meta`、`.tag` | 轮次 / 阶段 / 选手 |
+| play | `.play-top`、`.play-meta`、`.tag` | 悬浮顶栏：轮次 / 阶段 / 选手 |
 | play | `.timer`、`.timer-value`、`.timer-bar i` | 倒计时与进度条（`i.style.width` 是比例） |
-| play | `#boardHost` | 画板挂载点 |
-| play | `.play-actions .btn` | 暂停 / 结束本局 / 下一阶段 |
+| play | `#boardHost` / `.play-board` | 画板挂载点；canvas 与 `.content-body` 同尺寸铺满 |
+| play | `.play-side` | 右侧悬浮参考 / 说明面板；`v-show` 控制显隐 |
+| play | `.play-actions .btn` | 收起参考 / 暂停 / 结束本局 / 下一阶段 |
+| play | `.board-toolbar` | 悬浮在画板底部的画笔工具栏 |
 | play | `.timeup`、`.timeup .sub` | 时间到遮罩 |
 | play | `.ref-img` / `.placeholder` | 参考作品有图 / 空白 |
 | result | `.result-topic`、`.artwork-card`、`.blank-hint` | 结果摘要与作品卡 |
@@ -111,6 +135,8 @@ setup ──[抽 / 从题目列表点选，再点「确定」]──> play(phase
 ## 陷阱与已知行为
 
 - `board` 只在 play 阶段有效；`PlayScreen` 卸载会 emit `board: null`。不要在 setup / result 调画板 API。
+- play 布局依赖 `.content-body` 的固定高度（flex 撑满视口）和 `.play { position: absolute; inset: 0 }`；往内容区塞会改变高度的东西前，先确认画板仍然铺满。
+- 悬浮面板会盖住一部分画板；参考面板的展开状态只存在组件内，进入下一阶段会重置为展开（`PlayScreen` 每个阶段重新挂载）。
 - 抽题动画会先消耗题目再滚动；滚动中可能一闪而过地显示最终题目。对 A 不是秘密，可接受。
 - `inputBlockedUntil` 只在进入阶段时设置，结果页没有。
 - 刷新恢复时 `inputBlockedUntil` 归零，主持人可以立刻点「下一阶段」；这是有意的，别把它当成防抖失效。

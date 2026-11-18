@@ -75,6 +75,8 @@ interface DrawingBoardApi {
 </div>
 ```
 
+在 play 界面里，`.play .board*` 会把组件铺满整个内容区：`.board` / `.board-canvas-wrap` 都是 `position: absolute; inset: 0`，canvas 拉伸到 100% 宽高；`.board-toolbar` 则绝对定位悬浮在画板底部。组件结构不变，DOM 选择器仍然适用。
+
 ## 内部实现要点
 
 | 主题 | 实现 |

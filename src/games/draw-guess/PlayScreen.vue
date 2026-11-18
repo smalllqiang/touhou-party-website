@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import DrawingBoard from '@/components/DrawingBoard.vue'
 import type { DrawGuessConfig } from '@/config/normalize'
 import type { Artwork, Phase } from './useDrawGuess'
@@ -43,27 +43,54 @@ const ratio = computed(() => {
 
 const warn = computed(() => !props.paused && props.remaining <= 10 && props.remaining > 0)
 
+/** 参考 / 说明面板悬浮在画板上会挡住一部分画布，允许临时收起。 */
+const sideOpen = ref(true)
+
 onBeforeUnmount(() => emit('board', null))
 </script>
 
 <template>
+  <!-- 画板铺满整个内容区，其余控件全部是悬浮在画板上的 HUD -->
   <section class="play">
-    <div class="play-top">
-      <div class="play-meta">
-        <span class="tag">第 {{ round }} / {{ totalRounds }} 轮</span>
-        <span class="tag" :class="phase === 'A' ? 'a' : 'b'">
-          {{ phase === 'A' ? 'A · 画图' : 'B · 猜词' }}
-        </span>
-        <span class="player-name">{{ player }}</span>
-      </div>
-      <div class="timer" :class="{ warn, paused }">
-        <span class="timer-value">{{ formatTime(remaining) }}</span>
-        <div class="timer-bar"><i :style="{ width: `${ratio}%` }" /></div>
-      </div>
+    <div id="boardHost" class="play-board">
+      <DrawingBoard
+        :colors="config.colors"
+        :brush="config.brush"
+        :paused="paused"
+        :locked="locked"
+        @ready="emit('board', $event)"
+        @change="emit('board-change', $event)"
+      />
     </div>
 
-    <div class="play-body">
-      <aside class="play-side">
+    <div class="play-hud">
+      <div class="play-top">
+        <div class="play-meta">
+          <span class="tag">第 {{ round }} / {{ totalRounds }} 轮</span>
+          <span class="tag" :class="phase === 'A' ? 'a' : 'b'">
+            {{ phase === 'A' ? 'A · 画图' : 'B · 猜词' }}
+          </span>
+          <span class="player-name">{{ player }}</span>
+        </div>
+        <div class="timer" :class="{ warn, paused }">
+          <span class="timer-value">{{ formatTime(remaining) }}</span>
+          <div class="timer-bar"><i :style="{ width: `${ratio}%` }" /></div>
+        </div>
+        <div class="play-actions">
+          <button
+            class="btn ghost small"
+            :aria-pressed="sideOpen"
+            @click="sideOpen = !sideOpen"
+          >
+            {{ sideOpen ? '收起参考' : '参考 / 说明' }}
+          </button>
+          <button class="btn ghost small" @click="emit('pause')">{{ paused ? '继续' : '暂停' }}</button>
+          <button class="btn ghost small" @click="emit('quit')">结束本局</button>
+          <button class="btn primary" @click="emit('next')">{{ nextLabel }}</button>
+        </div>
+      </div>
+
+      <aside v-show="sideOpen" class="play-side">
         <div class="panel">
           <template v-if="phase === 'A' && round === 1">
             <p class="eyebrow">A 的题目</p>
@@ -83,7 +110,7 @@ onBeforeUnmount(() => emit('board', null))
             >
             <div v-else class="placeholder">这张参考作品是空白的 😅</div>
             <p class="muted">
-              {{ phase === 'A' ? '照着这个词再画一幅，让 B 接着猜。' : '看画猜词，把答案写在右边画板上。' }}
+              {{ phase === 'A' ? '照着这个词再画一幅，让 B 接着猜。' : '看画猜词，把答案写在左边画板上。' }}
             </p>
           </template>
         </div>
@@ -94,24 +121,6 @@ onBeforeUnmount(() => emit('board', null))
           <p class="muted">工具：调色盘选颜色、滑杆调粗细、🧽 橡皮擦、↶ 撤销、🗑 清空。鼠标 / 手指 / 手写笔都可以画。</p>
         </div>
       </aside>
-
-      <div class="play-main">
-        <div id="boardHost">
-          <DrawingBoard
-            :colors="config.colors"
-            :brush="config.brush"
-            :paused="paused"
-            :locked="locked"
-            @ready="emit('board', $event)"
-            @change="emit('board-change', $event)"
-          />
-        </div>
-        <div class="play-actions">
-          <button class="btn ghost small" @click="emit('pause')">{{ paused ? '继续' : '暂停' }}</button>
-          <button class="btn ghost small" @click="emit('quit')">结束本局</button>
-          <button class="btn primary" @click="emit('next')">{{ nextLabel }}</button>
-        </div>
-      </div>
     </div>
 
     <div v-if="timeUpVisible" class="timeup">

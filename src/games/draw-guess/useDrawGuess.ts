@@ -364,10 +364,10 @@ export function useDrawGuess() {
   const phaseInstruction = computed(() => {
     if (phase.value === 'A') {
       return round.value === 1
-        ? 'A 看着左边的题目作画，画完点「完成画图，交给 B」。'
-        : 'A 看着左边上一轮 B 写的词作画，画完点「完成画图，交给 B」。'
+        ? 'A 照着右侧面板里的题目作画，画完点「完成画图，交给 B」。'
+        : 'A 照着右侧面板里上一轮 B 写的词作画，画完点「完成画图，交给 B」。'
     }
-    return 'B 看左边的画，猜出词以后<b>写在右边画板上</b>（不能打字），写完点完成。'
+    return 'B 看右侧面板里的画，猜出词以后<b>写在左侧画板上</b>（不能打字），写完点完成。'
   })
 
   const timeUpText = computed(() => (
